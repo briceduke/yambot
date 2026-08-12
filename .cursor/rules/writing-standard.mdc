@@ -1,0 +1,22 @@
+---
+description: "Plain English writing standard for all agent-written text."
+globs: **/*
+alwaysApply: false
+---
+
+<!-- source: .ai/rules/writing-standard.md -->
+
+# Writing standard
+
+Use plain English in rules, skills, docs, comments, commit messages, CLI output, and plan text.
+
+1. Do not use metaphor, simile, or stock phrases.
+2. Prefer a short word to a long word.
+3. Cut each word you can cut.
+4. Use active voice.
+5. Prefer everyday English to jargon. Keep required product names (Cursor, Neon, bun) as proper nouns.
+6. Break a rule only if the result would be unclear or false.
+
+Keep fixed technical tokens as they are: file paths, command names, package names, env keys, label names.
+
+Also follow `.ai/rules/raptor-milspec.md`: fewer parts, vertical slices, no speculative extras.

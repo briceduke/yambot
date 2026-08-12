@@ -1,0 +1,19 @@
+{
+  "name": "yambot",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "prepare": "factory install-rules",
+    "checks": "bun run --cwd packages/checks check",
+    "checks:structure": "bun run --cwd packages/checks check:structure",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "factory": "file:///C:/Users/brice/dev/blueprint"
+  }
+}
