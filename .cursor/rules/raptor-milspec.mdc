@@ -1,0 +1,18 @@
+---
+description: "Prefer fewer parts that earn their keep; ship vertical slices; no speculative extras."
+globs: **/*
+alwaysApply: false
+---
+
+<!-- source: .ai/rules/raptor-milspec.md -->
+
+# Raptor / milspec
+
+Always:
+
+- Prefer fewer parts that still meet the need.
+- Every part must earn its keep; if removing it makes change easier, remove it.
+- Prefer one vertical slice that ships over layers that wait for each other.
+- Prefer an obvious seam (swap or mock) over a clever abstraction.
+- Do not add "in case we need it later."
+- When two options work, pick the one a mechanic can unscrew without a manual.

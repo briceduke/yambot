@@ -1,0 +1,20 @@
+{
+  "name": "@yambot/checks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "bun run ./src/cli.ts",
+    "check:structure": "bun run ./src/cli.ts structure",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.8.2"
+  },
+  "description": "Structure scanner that enforces folder rules from the app constitution.",
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}
