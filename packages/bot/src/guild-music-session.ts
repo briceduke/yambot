@@ -158,6 +158,14 @@ export class GuildMusicSession {
   }
 
   /**
+   * Voice channel name used in occupied-channel replies.
+   * @returns Channel name, or empty when unknown.
+   */
+  get voiceChannelName(): string {
+    return this.#voice.getChannelName();
+  }
+
+  /**
    * Joins the invoker's channel, or moves only when idle.
    * @param channelId - Invoker's voice channel id.
    */
