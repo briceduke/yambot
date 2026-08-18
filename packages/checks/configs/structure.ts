@@ -26,8 +26,7 @@ export interface StructureConfig {
 
 /**
  * Folder rules from `/constitution` (2026-08-11).
- * Per-package rules for `packages/bot` and `packages/audio-engine` land with
- * slice 1, when those folders exist — the scanner flags unmatched patterns.
+ * Package, engine, and bot folder rules. No exception list.
  */
 export const structureConfig: StructureConfig = {
   shapes: [
@@ -35,6 +34,26 @@ export const structureConfig: StructureConfig = {
       id: "package-shape",
       match: "packages/*",
       requiredFiles: ["package.json", "tsconfig.json"],
+    },
+    {
+      id: "engine-src",
+      match: "packages/audio-engine/src",
+      requiredFiles: ["track.ts", "track-queue.ts", "index.ts"],
+    },
+    {
+      id: "engine-source-module",
+      match: "packages/audio-engine/src/sources",
+      requiredFiles: ["youtube.ts"],
+    },
+    {
+      id: "bot-src",
+      match: "packages/bot/src",
+      requiredFiles: ["main.ts", "command-context.ts", "guild-music-session.ts"],
+    },
+    {
+      id: "bot-command-module",
+      match: "packages/bot/src/commands",
+      requiredFiles: ["play.ts", "skip.ts", "queue.ts"],
     },
   ],
 };
