@@ -1,8 +1,8 @@
 /**
- * Shared types for the structure scanner.
+ * Shared types for constitution scanners.
  */
 
-export type ScannerName = "structure";
+export type ScannerName = "structure" | "engine-seam";
 
 /**
  * One failed check reported by a scanner.

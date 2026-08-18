@@ -1,8 +1,15 @@
 # checks
 
-Structure scanner that enforces folder rules from the app constitution.
+Scanners that enforce the app constitution: folder rules and the engine/bot seam.
 
 Empty folder rules = healthy greenfield stamp. Add conformance or invariant scanners later only when `/constitution` invents a real rule — do not ship empty scanners “for later.”
+
+## Scanners
+
+- `structure` — folder rules: required files exist and forbidden files do not.
+- `engine-seam` — R1: `packages/audio-engine` has no Discord dependency or import. R2: `packages/bot` depends on `@yambot/audio-engine`; the engine does not depend on the bot.
+
+`bun run checks` (no args) runs `structure` then `engine-seam`.
 
 ## Commands
 
