@@ -1,0 +1,20 @@
+{
+  "name": "@yambot/audio-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.8.2"
+  },
+  "dependencies": {
+    "youtubei.js": "^18.0.0"
+  }
+}
