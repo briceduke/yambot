@@ -18,7 +18,7 @@ High-level design for the **target** product: JMusicBot UX in TypeScript, zero J
 
 **Locked:** parity is UX and capability, not internals. Design each part from first principles for performance and simplicity; never copy JMusicBot / lavaplayer structure, or a bot-framework “best practice,” out of habit — it must earn its keep here.
 
-**Default runtime:** Bun (or Node) for development and the primary self-host path. Perry is a packaging option, not the runtime that gates hearing audio.
+**Default runtime:** Bun for the workspace (install, tests, scripts, engine work). The bot process runs on Node LTS: Bun's voice path today has timer drift and 8–13x CPU cost (oven-sh/bun#11313, #26415), and voice must speak DAVE. Revisit when those issues close — the swap is one line. Perry is a packaging option, not the runtime that gates hearing audio. (Grill 2026-08-11: `.ai/runs/2026-08-11-grill-slice-1-core-playback.md`.)
 
 **Permanent cuts:** no web dashboard, no hosted multi-tenant SaaS, no JVM, no remote player protocol, no public “TS lavaplayer” product.
 
@@ -49,17 +49,17 @@ Ordered high-level cuts. Each slice ships an end-to-end user outcome. Do not sta
 
 **Outcome:** Join voice; play YouTube (URL or search); queue; skip; zero Java; engine package seam exists.
 
-**In:** Bot + engine + in-memory guild session; Bun/Node; minimal commands for that flow.
+**In:** Bot + engine + in-memory guild session; Bun/Node; minimal commands for that flow on both doors — slash and prefix (hybrid locked at the 2026-08-11 grill; needs the MessageContent privileged intent).
 
 **Out:** Extra sources, full command set, DJ config, Perry binary, persistence.
 
 ### 2 — Core music controls
 
-**Outcome:** Everyday queue control in one session (pause/resume, now playing, remove, shuffle, clear, stop/leave policy, and the same class of peers JMusicBot users expect day to day).
+**Outcome:** Everyday queue control in one session: pause/resume, now playing, remove, shuffle, clear, stop/leave, plus a leave policy. Same zero-transcode seam as slice 1.
 
-**In:** More bot commands wired to the same engine session API.
+**In:** Those commands on both doors, wired to the same engine session API (`TrackQueue` grows remove/shuffle/clear; bot session grows pause/stop/leave). Leave policy locked at the 2026-08-17 grill: leave on `stop` and when the queue empties; do not leave when alone; voice-drop keeps the queue.
 
-**Out:** New source sites; playlists-as-sources; DJ roles.
+**Out:** Volume, seek, lyrics, repeat/playnext/move/skipto, reconnect-with-position, live now-playing message. New source sites; playlists-as-sources; DJ roles.
 
 ### 3 — Source breadth
 
@@ -79,7 +79,7 @@ Ordered high-level cuts. Each slice ships an end-to-end user outcome. Do not sta
 
 ### 5 — Operator surface and command parity
 
-**Outcome:** DJ-role / guild setup and remaining JMusicBot-class commands; deliberate slash vs prefix (or hybrid) UX locked for parity.
+**Outcome:** DJ-role / guild setup and remaining JMusicBot-class commands. Hybrid slash+prefix is already locked (slice 1 grill); this slice completes prefix parity: guild-level prefix config and mention-as-prefix.
 
 **In:** Bot-side permissions and config; only persist if the slice needs settings to survive restart.
 
@@ -128,10 +128,7 @@ Ordered high-level cuts. Each slice ships an end-to-end user outcome. Do not sta
 
 ## Package shape
 
-The workspace glob is `packages/*`. Today only `packages/checks` exists (factory structure checks). Slice 1 adds the two app packages:
-
-- `packages/audio-engine` (name flexible) — engine only.
-- `packages/bot` (or app entry) — Discord bot that depends on the engine.
+The workspace glob is `packages/*`. Packages that exist today are `packages/checks` (factory structure checks), `packages/audio-engine` (engine only), and `packages/bot` (Discord bot that depends on the engine). Target stays those two app packages plus checks.
 
 Do not invent more packages until a later slice proves the two-package shape is wrong.
 

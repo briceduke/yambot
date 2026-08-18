@@ -11,7 +11,8 @@
     "checks": "bun run --cwd packages/checks check",
     "checks:structure": "bun run --cwd packages/checks check:structure",
     "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun test"
+    "test": "bun test",
+    "start": "bun run --cwd packages/bot start"
   },
   "devDependencies": {
     "factory": "file:///C:/Users/brice/dev/blueprint"
