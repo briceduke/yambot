@@ -43,6 +43,9 @@ class DiscordVoicePort implements VoicePort {
   constructor(guild: Guild) {
     this.#guild = guild;
     this.#player.on("stateChange", (oldState, newState) => {
+      if (newState.status === AudioPlayerStatus.Paused) {
+        return;
+      }
       if (
         oldState.status !== AudioPlayerStatus.Idle &&
         newState.status === AudioPlayerStatus.Idle
@@ -98,6 +101,53 @@ class DiscordVoicePort implements VoicePort {
 
   stop(): void {
     this.#player.stop();
+  }
+
+  /**
+   * Pauses the current resource if one is playing.
+   * @returns `true` when the player paused.
+   */
+  pause(): boolean {
+    return this.#player.pause();
+  }
+
+  /**
+   * Resumes a paused resource.
+   * @returns `true` when the player unpaused.
+   */
+  unpause(): boolean {
+    return this.#player.unpause();
+  }
+
+  /**
+   * @returns `true` only when the player is in the Paused status.
+   */
+  isPaused(): boolean {
+    return this.#player.state.status === AudioPlayerStatus.Paused;
+  }
+
+  /**
+   * Elapsed playback time from the player. Zero when not Playing or Paused.
+   * @returns Milliseconds of playback duration.
+   */
+  playbackDurationMs(): number {
+    const state = this.#player.state;
+    if (
+      state.status === AudioPlayerStatus.Playing ||
+      state.status === AudioPlayerStatus.Paused
+    ) {
+      return state.playbackDuration;
+    }
+    return 0;
+  }
+
+  /**
+   * Destroys the voice connection if one exists.
+   */
+  destroy(): void {
+    this.#connection?.destroy();
+    this.#connection = undefined;
+    this.#channelId = null;
   }
 
   onIdle(handler: () => void): void {

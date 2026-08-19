@@ -10,7 +10,9 @@ import {
 
 import {
   createSession,
+  dropSession,
   getSession,
+  IDLE_LEAVE_AFTER_MS,
   type EnginePort,
   type VoicePort,
 } from "./guild-music-session.ts";
@@ -126,13 +128,267 @@ describe("GuildMusicSession", () => {
     expect(session.snapshot()).toEqual({ current: null, upcoming: [] });
     expect(voice.played).toEqual([]);
   });
+
+  test("pause does not advance the queue", async () => {
+    const clock = new FakeIdleLeaveClock();
+    const voice = new FakeVoice();
+    const announces: string[] = [];
+    const session = createSession({
+      guildId: "guild-pause",
+      engine: createEngine(),
+      voice,
+      scheduleIdleLeave: (callback, delayMs) =>
+        clock.schedule(callback, delayMs),
+    });
+    session.bindAnnounce(async (text) => {
+      announces.push(text);
+    });
+    const first = sampleTrack("one");
+    const second = sampleTrack("two");
+
+    await session.joinInvoker("channel-a");
+    await session.playNow(first);
+    session.enqueue(second);
+    expect(session.pause()).toBe(true);
+
+    expect(session.currentTrack).toBe(first);
+    expect(session.isPaused()).toBe(true);
+    expect(session.snapshot().upcoming).toEqual([second]);
+    expect(session.isOccupiedInOtherChannel("channel-b")).toBe(true);
+    expect(announces).toEqual([]);
+    expect(getSession("guild-pause")).toBe(session);
+    expect(clock.isScheduled).toBe(false);
+  });
+
+  test("skip while paused starts the next track playing", async () => {
+    const voice = new FakeVoice();
+    const session = createSession({
+      guildId: "guild-skip-paused",
+      engine: createEngine(),
+      voice,
+    });
+    const first = sampleTrack("one");
+    const second = sampleTrack("two", 61);
+
+    await session.joinInvoker("channel-a");
+    await session.playNow(first);
+    session.enqueue(second);
+    session.pause();
+    session.skipCurrent();
+
+    await waitUntilAsync(() => session.currentTrack === second);
+    expect(session.isPaused()).toBe(false);
+    expect(session.snapshot().upcoming).toEqual([]);
+  });
+
+  test("last-track skip schedules idle leave then fire drops the session", async () => {
+    const clock = new FakeIdleLeaveClock();
+    const voice = new FakeVoice();
+    const announces: string[] = [];
+    const session = createSession({
+      guildId: "guild-last-skip",
+      engine: createEngine(),
+      voice,
+      scheduleIdleLeave: (callback, delayMs) =>
+        clock.schedule(callback, delayMs),
+    });
+    session.bindAnnounce(async (text) => {
+      announces.push(text);
+    });
+    const first = sampleTrack("one");
+
+    await session.joinInvoker("channel-a");
+    await session.playNow(first);
+    session.skipCurrent();
+
+    expect(getSession("guild-last-skip")).toBe(session);
+    expect(session.currentTrack).toBeNull();
+    expect(session.hasVoiceConnection()).toBe(true);
+    expect(clock.scheduledDelayMs).toBe(IDLE_LEAVE_AFTER_MS);
+    expect(announces).toEqual([]);
+
+    clock.fire();
+    expect(getSession("guild-last-skip")).toBeUndefined();
+    expect(voice.destroyed).toBe(true);
+  });
+
+  test("natural idle schedules idle leave then fire drops the session", async () => {
+    const clock = new FakeIdleLeaveClock();
+    const voice = new FakeVoice();
+    const announces: string[] = [];
+    const session = createSession({
+      guildId: "guild-natural-idle",
+      engine: createEngine(),
+      voice,
+      scheduleIdleLeave: (callback, delayMs) =>
+        clock.schedule(callback, delayMs),
+    });
+    session.bindAnnounce(async (text) => {
+      announces.push(text);
+    });
+
+    await session.joinInvoker("channel-a");
+    await session.playNow(sampleTrack("one"));
+    voice.emitIdle();
+
+    expect(getSession("guild-natural-idle")).toBe(session);
+    expect(session.currentTrack).toBeNull();
+    expect(clock.scheduledDelayMs).toBe(IDLE_LEAVE_AFTER_MS);
+    expect(announces).toEqual([]);
+
+    clock.fire();
+    expect(getSession("guild-natural-idle")).toBeUndefined();
+    expect(voice.destroyed).toBe(true);
+  });
+
+  test("last dead-open schedules idle leave then fire drops the session", async () => {
+    const clock = new FakeIdleLeaveClock();
+    const voice = new FakeVoice();
+    const announces: string[] = [];
+    const session = createSession({
+      guildId: "guild-last-dead",
+      engine: createEngine({ failTitles: new Set(["dead"]) }),
+      voice,
+      scheduleIdleLeave: (callback, delayMs) =>
+        clock.schedule(callback, delayMs),
+    });
+    session.bindAnnounce(async (text) => {
+      announces.push(text);
+    });
+    const first = sampleTrack("one");
+    const dead = sampleTrack("dead");
+
+    await session.joinInvoker("channel-a");
+    await session.playNow(first);
+    session.enqueue(dead);
+    voice.emitIdle();
+
+    await waitUntilAsync(() => clock.isScheduled);
+    expect(getSession("guild-last-dead")).toBe(session);
+    expect(session.currentTrack).toBeNull();
+    expect(clock.scheduledDelayMs).toBe(IDLE_LEAVE_AFTER_MS);
+    expect(announces).toEqual(["Skipping dead: couldn't play it"]);
+
+    clock.fire();
+    expect(getSession("guild-last-dead")).toBeUndefined();
+    expect(voice.destroyed).toBe(true);
+  });
+
+  test("playNow after idle-leave schedule cancels so fire is a no-op", async () => {
+    const clock = new FakeIdleLeaveClock();
+    const voice = new FakeVoice();
+    const session = createSession({
+      guildId: "guild-cancel-idle",
+      engine: createEngine(),
+      voice,
+      scheduleIdleLeave: (callback, delayMs) =>
+        clock.schedule(callback, delayMs),
+    });
+    const later = sampleTrack("later");
+
+    await session.joinInvoker("channel-a");
+    await session.playNow(sampleTrack("one"));
+    voice.emitIdle();
+    expect(clock.isScheduled).toBe(true);
+
+    await session.playNow(later);
+    expect(clock.isScheduled).toBe(false);
+    expect(session.currentTrack).toBe(later);
+
+    clock.fire();
+    expect(getSession("guild-cancel-idle")).toBe(session);
+    expect(session.currentTrack).toBe(later);
+    expect(voice.destroyed).toBe(false);
+  });
+
+  test("dropSession while a track is current leaves now", async () => {
+    const clock = new FakeIdleLeaveClock();
+    const voice = new FakeVoice();
+    const session = createSession({
+      guildId: "guild-drop-now",
+      engine: createEngine(),
+      voice,
+      scheduleIdleLeave: (callback, delayMs) =>
+        clock.schedule(callback, delayMs),
+    });
+
+    await session.joinInvoker("channel-a");
+    await session.playNow(sampleTrack("one"));
+    dropSession("guild-drop-now");
+
+    expect(getSession("guild-drop-now")).toBeUndefined();
+    expect(voice.destroyed).toBe(true);
+    expect(clock.isScheduled).toBe(false);
+    dropSession("guild-drop-now");
+  });
+
+  test("clearUpcoming and pause while current do not drop the session", async () => {
+    const clock = new FakeIdleLeaveClock();
+    const voice = new FakeVoice();
+    const session = createSession({
+      guildId: "guild-clear-pause-stay",
+      engine: createEngine(),
+      voice,
+      scheduleIdleLeave: (callback, delayMs) =>
+        clock.schedule(callback, delayMs),
+    });
+    const first = sampleTrack("one");
+    const queued = sampleTrack("two");
+
+    await session.joinInvoker("channel-a");
+    await session.playNow(first);
+    session.enqueue(queued);
+    expect(session.clearUpcoming()).toBe(1);
+    expect(getSession("guild-clear-pause-stay")).toBe(session);
+    expect(session.currentTrack).toBe(first);
+    expect(clock.isScheduled).toBe(false);
+
+    session.pause();
+    expect(getSession("guild-clear-pause-stay")).toBe(session);
+    expect(session.currentTrack).toBe(first);
+    expect(session.isPaused()).toBe(true);
+    expect(clock.isScheduled).toBe(false);
+  });
+
+  test("voice drop while paused drops current, keeps upcoming, does not schedule idle leave", async () => {
+    const clock = new FakeIdleLeaveClock();
+    const voice = new FakeVoice();
+    const session = createSession({
+      guildId: "guild-drop-paused",
+      engine: createEngine(),
+      voice,
+      scheduleIdleLeave: (callback, delayMs) =>
+        clock.schedule(callback, delayMs),
+    });
+    const first = sampleTrack("one");
+    const queued = sampleTrack("two");
+
+    await session.joinInvoker("channel-a");
+    await session.playNow(first);
+    session.enqueue(queued);
+    session.pause();
+    voice.emitDisconnected();
+
+    expect(getSession("guild-drop-paused")).toBe(session);
+    expect(session.snapshot()).toEqual({
+      current: null,
+      upcoming: [queued],
+    });
+    expect(clock.isScheduled).toBe(false);
+    expect(session.hasVoiceConnection()).toBe(false);
+    expect(voice.destroyed).toBe(false);
+  });
 });
 
 class FakeVoice implements VoicePort {
   readonly played: TrackAudio[] = [];
+  destroyed = false;
   #channelId: string | null = null;
   #idleHandler: (() => void) | undefined;
   #disconnectedHandler: (() => void) | undefined;
+  #isPlaying = false;
+  #paused = false;
+  #playbackDurationMs = 0;
 
   async join(channelId: string): Promise<void> {
     this.#channelId = channelId;
@@ -148,10 +404,43 @@ class FakeVoice implements VoicePort {
 
   async play(audio: TrackAudio): Promise<void> {
     this.played.push(audio);
+    this.#isPlaying = true;
+    this.#paused = false;
   }
 
   stop(): void {
+    this.#isPlaying = false;
+    this.#paused = false;
     this.#idleHandler?.();
+  }
+
+  pause(): boolean {
+    if (!this.#isPlaying || this.#paused) {
+      return false;
+    }
+    this.#paused = true;
+    return true;
+  }
+
+  unpause(): boolean {
+    if (!this.#isPlaying || !this.#paused) {
+      return false;
+    }
+    this.#paused = false;
+    return true;
+  }
+
+  isPaused(): boolean {
+    return this.#paused;
+  }
+
+  playbackDurationMs(): number {
+    return this.#playbackDurationMs;
+  }
+
+  destroy(): void {
+    this.#channelId = null;
+    this.destroyed = true;
   }
 
   onIdle(handler: () => void): void {
@@ -163,6 +452,8 @@ class FakeVoice implements VoicePort {
   }
 
   emitIdle(): void {
+    this.#isPlaying = false;
+    this.#paused = false;
     this.#idleHandler?.();
   }
 
@@ -172,17 +463,50 @@ class FakeVoice implements VoicePort {
   }
 }
 
-function createEngine(options: {
-  readonly failTitles?: ReadonlySet<string>;
-  readonly stream?: ReadableStream<Uint8Array>;
-} = {}): EnginePort {
+class FakeIdleLeaveClock {
+  #callback: (() => void) | undefined;
+  #delayMs: number | null = null;
+
+  get scheduledDelayMs(): number | null {
+    return this.#delayMs;
+  }
+
+  get isScheduled(): boolean {
+    return this.#callback !== undefined;
+  }
+
+  schedule(callback: () => void, delayMs: number): () => void {
+    this.#callback = callback;
+    this.#delayMs = delayMs;
+    return (): void => {
+      this.#callback = undefined;
+      this.#delayMs = null;
+    };
+  }
+
+  fire(): void {
+    const pending: (() => void) | undefined = this.#callback;
+    this.#callback = undefined;
+    this.#delayMs = null;
+    pending?.();
+  }
+}
+
+function createEngine(
+  options: {
+    readonly failTitles?: ReadonlySet<string>;
+    readonly stream?: ReadableStream<Uint8Array>;
+  } = {},
+): EnginePort {
   const failTitles: ReadonlySet<string> = options.failTitles ?? new Set();
   const stream: ReadableStream<Uint8Array> = options.stream ?? emptyStream();
   return {
     async resolveTrack(): Promise<Track> {
       throw new Error("resolveTrack is not used in session tests");
     },
-    async openTrackAudio(input: { readonly track: Track }): Promise<TrackAudio> {
+    async openTrackAudio(input: {
+      readonly track: Track;
+    }): Promise<TrackAudio> {
       if (failTitles.has(input.track.title)) {
         throw new TrackResolveError("couldn't play it");
       }
