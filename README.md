@@ -25,6 +25,10 @@ https://discord.com/oauth2/authorize?client_id=CLIENT_ID&scope=bot%20application
 2. From the repo root run `bun install`, then `bun start`.
 3. The bot shows online in Discord.
 
+Slash commands `/play`, `/skip`, and `/queue` register themselves when the bot comes online (every guild on ready, and again when invited to a new guild). No extra register step. If they do not appear, re-invite with `applications.commands` and restart.
+
+`bun run dev` starts the same bot with Node `--watch` (restarts on file change).
+
 ## Commands
 
 Slash: `/play`, `/skip`, `/queue`.
