@@ -38,4 +38,41 @@ export class TrackQueue {
   get size(): number {
     return this.#tracks.length;
   }
+
+  /**
+   * Removes the track at a 0-based index, or returns `null` if the index is out of range.
+   * @param index - 0-based position in the queue.
+   * @returns The removed track, or `null`.
+   */
+  removeAt(index: number): Track | null {
+    if (index < 0 || index >= this.#tracks.length) {
+      return null;
+    }
+    const removed: Track[] = this.#tracks.splice(index, 1);
+    return removed[0] ?? null;
+  }
+
+  /**
+   * Reorders upcoming tracks in place. Size and membership stay the same.
+   */
+  shuffle(): void {
+    const tracks: Track[] = this.#tracks;
+    for (let i = tracks.length - 1; i > 0; i -= 1) {
+      const j: number = Math.floor(Math.random() * (i + 1));
+      const left: Track | undefined = tracks[i];
+      const right: Track | undefined = tracks[j];
+      if (left === undefined || right === undefined) {
+        continue;
+      }
+      tracks[i] = right;
+      tracks[j] = left;
+    }
+  }
+
+  /**
+   * Drops every upcoming track.
+   */
+  clear(): void {
+    this.#tracks.length = 0;
+  }
 }
