@@ -376,3 +376,26 @@ The judge checks for copied structure on ship; risky slices get a raptor pass.
 Engine and bot design, specs, plans, judge reviews.
 
 **Tags:** product
+
+---
+
+## Context
+
+Root `bun start` is `bun run --cwd packages/bot start`. Node
+`--env-file-if-exists=.env` is resolved against that cwd.
+
+## Problem
+
+Operators put `.env` at the repo root (README). Start looked for
+`packages/bot/.env`, skipped it, and exited with a missing-token error.
+
+## Rule
+
+When start changes cwd into a package, the env-file path must point at
+repo-root `.env` (`../../.env` from `packages/bot`). Do not add dotenv.
+
+## Applies to
+
+Bot `start` scripts, README run steps, smoke step 0.
+
+**Tags:** process, product
