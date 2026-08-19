@@ -99,6 +99,27 @@ describe("executePlay", () => {
     expect(session.queued).toEqual([queued]);
     expect(session.played).toEqual([]);
   });
+
+  test("enqueues and stays paused when current is paused", async () => {
+    const session = new FakeSession();
+    session.currentTrack = sampleTrack("current", 100);
+    session.paused = true;
+    session.enqueuePosition = 2;
+    const queued = sampleTrack("Next Song", 61);
+    session.resolvedTrack = queued;
+    const ctx = createContext({
+      args: "next song",
+      invokerVoiceChannelId: "voice-1",
+    });
+
+    await executePlay(ctx, session.asGuildSession());
+
+    expect(ctx.replies).toEqual(["Queued (#2): Next Song (1:01)"]);
+    expect(session.queued).toEqual([queued]);
+    expect(session.played).toEqual([]);
+    expect(session.unpauseCalls).toBe(0);
+    expect(session.isPaused()).toBe(true);
+  });
 });
 
 class FakeContext implements CommandContext {
@@ -126,6 +147,8 @@ class FakeSession {
   readonly played: Track[] = [];
   readonly queued: Track[] = [];
   currentTrack: Track | null = null;
+  paused = false;
+  unpauseCalls = 0;
   voiceChannelName = "music";
   occupied = false;
   enqueuePosition = 2;
@@ -159,6 +182,16 @@ class FakeSession {
   enqueue(track: Track): number {
     this.queued.push(track);
     return this.enqueuePosition;
+  }
+
+  isPaused(): boolean {
+    return this.paused;
+  }
+
+  unpause(): boolean {
+    this.unpauseCalls += 1;
+    this.paused = false;
+    return true;
   }
 
   asGuildSession(): GuildMusicSession {

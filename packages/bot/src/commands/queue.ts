@@ -9,6 +9,7 @@ import type {
 } from "../guild-music-session.ts";
 
 const EMPTY_QUEUE_REPLY = "Nothing is playing and the queue is empty.";
+const IDLE_LEFTOVER_HEADER = "Nothing is playing.";
 const UPCOMING_DISPLAY_LIMIT = 10;
 
 /** Slash command payload for `/queue`. */
@@ -17,7 +18,7 @@ export const queueSlashData = new SlashCommandBuilder()
   .setDescription("Show the current track and the queue.");
 
 /**
- * Replies with the current track and up to 10 upcoming entries.
+ * Replies with the current track, or leftover upcoming when idle, up to 10 entries.
  * Transport-agnostic: no Interaction or Message.
  * @param ctx - Thin command input from either door.
  * @param session - Guild playback session, or `undefined` when none exists.
@@ -42,6 +43,8 @@ function formatQueueText(snapshot: SessionSnapshot): string {
   const lines: string[] = [];
   if (current !== null) {
     lines.push(formatNowLine(current));
+  } else {
+    lines.push(IDLE_LEFTOVER_HEADER);
   }
   lines.push(...upcoming.slice(0, UPCOMING_DISPLAY_LIMIT).map(formatUpcomingLine));
   if (upcoming.length > UPCOMING_DISPLAY_LIMIT) {
