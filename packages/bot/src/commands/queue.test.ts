@@ -24,6 +24,21 @@ describe("executeQueue", () => {
     ]);
   });
 
+  test("replies leftover listing with no Now line when idle with upcoming", async () => {
+    const session = new FakeSession({
+      current: null,
+      upcoming: [sampleTrack("Leftover", 61), sampleTrack("Later", 120)],
+    });
+    const ctx = createContext();
+
+    await executeQueue(ctx, session.asGuildSession());
+
+    expect(ctx.replies).toEqual([
+      "Nothing is playing.\n1. Leftover (1:01)\n2. Later (2:00)",
+    ]);
+    expect(ctx.replies[0]).not.toContain("Now:");
+  });
+
   test("replies Now plus one numbered upcoming track", async () => {
     const session = new FakeSession({
       current: sampleTrack("Current", 213),
