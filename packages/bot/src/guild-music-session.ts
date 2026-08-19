@@ -20,20 +20,44 @@ export interface VoicePort {
   getChannelName(): string;
   play(audio: TrackAudio): Promise<void>;
   stop(): void;
+  /** Pauses playback. @returns Whether the player paused. */
+  pause(): boolean;
+  /** Resumes playback. @returns Whether the player unpaused. */
+  unpause(): boolean;
+  /** @returns Whether the player is in the Paused status. */
+  isPaused(): boolean;
+  /** @returns Elapsed playback milliseconds, or `0` when not Playing or Paused. */
+  playbackDurationMs(): number;
+  /** Destroys the voice connection. */
+  destroy(): void;
   onIdle(handler: () => void): void;
   onDisconnected(handler: () => void): void;
+}
+
+/**
+ * Schedules the idle-leave callback and returns a cancel function.
+ * @param callback - Leave helper to run after the delay.
+ * @param delayMs - Wait before leaving, in milliseconds.
+ * @returns Function that cancels the scheduled leave.
+ */
+export interface ScheduleIdleLeave {
+  (callback: () => void, delayMs: number): () => void;
 }
 
 export interface CreateSessionInput {
   readonly guildId: string;
   readonly engine: EnginePort;
   readonly voice: VoicePort;
+  readonly scheduleIdleLeave?: ScheduleIdleLeave;
 }
 
 export interface SessionSnapshot {
   readonly current: Track | null;
   readonly upcoming: readonly Track[];
 }
+
+/** Idle-leave wait after the queue empties while still in voice, in milliseconds. */
+export const IDLE_LEAVE_AFTER_MS: number = 300_000;
 
 const sessions: Map<string, GuildMusicSession> = new Map();
 
@@ -48,7 +72,7 @@ export function getSession(guildId: string): GuildMusicSession | undefined {
 
 /**
  * Creates and registers one guild music session.
- * @param input - Guild id, engine port, and voice port.
+ * @param input - Guild id, engine port, voice port, and optional idle-leave scheduler.
  * @returns The new session.
  */
 export function createSession(input: CreateSessionInput): GuildMusicSession {
@@ -58,19 +82,38 @@ export function createSession(input: CreateSessionInput): GuildMusicSession {
 }
 
 /**
+ * Cancels idle leave, removes the guild session, then stops and destroys voice.
+ * Idempotent when the session is already gone.
+ * @param guildId - Discord guild id.
+ */
+export function dropSession(guildId: string): void {
+  const session: GuildMusicSession | undefined = sessions.get(guildId);
+  if (session === undefined) {
+    return;
+  }
+  session.leaveNow();
+}
+
+/**
  * Per-guild playback session: engine queue, current track, voice, announce.
  */
 export class GuildMusicSession {
   readonly engine: EnginePort;
+  readonly #guildId: string;
   readonly #voice: VoicePort;
   readonly #queue: TrackQueue = new TrackQueue();
+  readonly #scheduleIdleLeave: ScheduleIdleLeave;
   #currentTrack: Track | null = null;
   #announce: ((text: string) => Promise<void>) | undefined;
   #ignoreIdle = false;
+  #cancelIdleLeave: (() => void) | undefined;
 
   constructor(input: CreateSessionInput) {
     this.engine = input.engine;
+    this.#guildId = input.guildId;
     this.#voice = input.voice;
+    this.#scheduleIdleLeave =
+      input.scheduleIdleLeave ?? defaultScheduleIdleLeave;
     this.#voice.onIdle(() => {
       void this.#advanceOnIdleAsync();
     });
@@ -80,8 +123,8 @@ export class GuildMusicSession {
   }
 
   /**
-   * Current track, or `null` when idle.
-   * @returns The track now playing.
+   * Current track, or `null` when idle. A paused track stays current.
+   * @returns The track now playing or paused.
    */
   get currentTrack(): Track | null {
     return this.#currentTrack;
@@ -102,6 +145,7 @@ export class GuildMusicSession {
    */
   async playNow(track: Track): Promise<void> {
     const audio: TrackAudio = await openOrWrapAsync(this.engine, track);
+    this.#cancelScheduledIdleLeave();
     this.#ignoreIdle = false;
     await this.#voice.play(audio);
     this.#currentTrack = track;
@@ -143,6 +187,7 @@ export class GuildMusicSession {
 
   /**
    * True when this guild is playing in a different voice channel than the invoker.
+   * Paused still counts as occupied.
    * @param invokerVoiceChannelId - Invoker's voice channel id.
    * @returns Whether the session is occupied elsewhere.
    */
@@ -176,6 +221,87 @@ export class GuildMusicSession {
     await this.#voice.join(channelId);
   }
 
+  /**
+   * @returns Whether the audio player is paused.
+   */
+  isPaused(): boolean {
+    return this.#voice.isPaused();
+  }
+
+  /**
+   * @returns Elapsed playback milliseconds from the voice player.
+   */
+  playbackDurationMs(): number {
+    return this.#voice.playbackDurationMs();
+  }
+
+  /**
+   * Pauses the current track. Does not advance the queue.
+   * @returns Whether the player paused.
+   */
+  pause(): boolean {
+    return this.#voice.pause();
+  }
+
+  /**
+   * Resumes a paused track.
+   * @returns Whether the player unpaused.
+   */
+  unpause(): boolean {
+    return this.#voice.unpause();
+  }
+
+  /**
+   * @returns Whether the bot is in a voice channel.
+   */
+  hasVoiceConnection(): boolean {
+    return this.#voice.getChannelId() !== null;
+  }
+
+  /**
+   * Removes one upcoming track by 0-based index.
+   * @param index - Position in the upcoming list.
+   * @returns The removed track, or `null` if the index is out of range.
+   */
+  removeUpcomingAt(index: number): Track | null {
+    return this.#queue.removeAt(index);
+  }
+
+  /**
+   * Reorders upcoming tracks in place.
+   */
+  shuffleUpcoming(): void {
+    this.#queue.shuffle();
+  }
+
+  /**
+   * Drops every upcoming track. Does not stop the current track.
+   * @returns Queue size before clear.
+   */
+  clearUpcoming(): number {
+    const size: number = this.#queue.size;
+    this.#queue.clear();
+    return size;
+  }
+
+  /**
+   * Stops the audio player only. Does not destroy the voice connection.
+   */
+  stopPlayer(): void {
+    this.#voice.stop();
+  }
+
+  /**
+   * Cancels idle leave, deletes this session from the map, then stops and
+   * destroys voice. Used by `dropSession`.
+   */
+  leaveNow(): void {
+    this.#cancelScheduledIdleLeave();
+    sessions.delete(this.#guildId);
+    this.#voice.stop();
+    this.#voice.destroy();
+  }
+
   #shouldStayInCurrentChannel(channelId: string): boolean {
     if (this.#currentTrack === null) {
       return false;
@@ -185,12 +311,19 @@ export class GuildMusicSession {
   }
 
   #onVoiceDisconnected(): void {
+    if (getSession(this.#guildId) === undefined) {
+      return;
+    }
+    this.#cancelScheduledIdleLeave();
     this.#ignoreIdle = true;
     this.#voice.stop();
     this.#currentTrack = null;
   }
 
   async #advanceOnIdleAsync(): Promise<void> {
+    if (getSession(this.#guildId) === undefined) {
+      return;
+    }
     if (this.#ignoreIdle) {
       return;
     }
@@ -201,8 +334,12 @@ export class GuildMusicSession {
     const next: Track | null = this.#queue.dequeueNext();
     if (next === null) {
       this.#currentTrack = null;
+      if (this.#voice.getChannelId() !== null) {
+        this.#armIdleLeave();
+      }
       return;
     }
+    this.#cancelScheduledIdleLeave();
     const played: boolean = await this.#tryPlayNextAsync(next);
     if (!played) {
       await this.#playNextFromQueueAsync();
@@ -228,6 +365,31 @@ export class GuildMusicSession {
     }
     await this.#announce(text);
   }
+
+  #armIdleLeave(): void {
+    this.#cancelScheduledIdleLeave();
+    this.#cancelIdleLeave = this.#scheduleIdleLeave(() => {
+      dropSession(this.#guildId);
+    }, IDLE_LEAVE_AFTER_MS);
+  }
+
+  #cancelScheduledIdleLeave(): void {
+    if (this.#cancelIdleLeave === undefined) {
+      return;
+    }
+    this.#cancelIdleLeave();
+    this.#cancelIdleLeave = undefined;
+  }
+}
+
+function defaultScheduleIdleLeave(
+  callback: () => void,
+  delayMs: number,
+): () => void {
+  const timer: ReturnType<typeof setTimeout> = setTimeout(callback, delayMs);
+  return function cancelIdleLeave(): void {
+    clearTimeout(timer);
+  };
 }
 
 async function openOrWrapAsync(
