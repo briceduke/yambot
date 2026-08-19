@@ -399,3 +399,28 @@ repo-root `.env` (`../../.env` from `packages/bot`). Do not add dotenv.
 Bot `start` scripts, README run steps, smoke step 0.
 
 **Tags:** process, product
+
+---
+
+## Context
+
+youtubei.js v18 `download()` for audio-only webm/opus.
+
+## Problem
+
+`chooseFormat({ type: "audio", format: "webm", codec: "opus" })` succeeds, so
+resolve looks fine. `download()` then fails: it defaults `quality` to `360p`
+(drops audio-only formats: "No matching formats found") and the WEB client
+lists formats with no stream URLs ("No valid URL to decipher"). Both map to
+`Couldn't play that YouTube video.`
+
+## Rule
+
+Pass `quality: "best"` and `client: "VISIONOS"` on InnerTube download (and
+matching `getInfo`). Do not add ffmpeg, a second extractor, or a JS evaluator.
+
+## Applies to
+
+`packages/audio-engine` YouTube source module.
+
+**Tags:** platform

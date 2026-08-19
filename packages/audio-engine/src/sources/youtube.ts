@@ -8,10 +8,14 @@ const PLAYLIST_UNSUPPORTED =
 const NO_SEARCH_HIT = "No YouTube results for that search.";
 const NO_PLAYABLE_AUDIO = "That video has no playable audio.";
 const PLAY_FAILED = "Couldn't play that YouTube video.";
+// download() defaults quality to 360p, which drops audio-only formats.
+// WEB format lists have no stream URLs in youtubei.js v18; VISIONOS still does.
 const AUDIO_WEBM_OPUS = {
   type: "audio",
   format: "webm",
   codec: "opus",
+  quality: "best",
+  client: "VISIONOS",
 } as const;
 
 export interface YoutubeVideoIdQuery {
@@ -159,7 +163,9 @@ async function getVideoFromInnertubeAsync(
   readonly hasWebmOpus: boolean;
 }> {
   try {
-    const info = await innertube.getInfo(videoId);
+    const info = await innertube.getInfo(videoId, {
+      client: AUDIO_WEBM_OPUS.client,
+    });
     if (isUnplayable(info.playability_status?.status)) {
       throw new TrackResolveError(PLAY_FAILED);
     }

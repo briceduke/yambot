@@ -56,6 +56,15 @@ describe("parseYoutubeQuery", () => {
     });
   });
 
+  test("classifies a youtu.be URL with si as a video id", () => {
+    expect(
+      parseYoutubeQuery("https://youtu.be/Stu6m4IrIY8?si=eYTq6K7fJbHpPr7v"),
+    ).toEqual({
+      kind: "video-id",
+      videoId: "Stu6m4IrIY8",
+    });
+  });
+
   test("classifies search words as search", () => {
     expect(parseYoutubeQuery("never gonna give you up")).toEqual({
       kind: "search",
