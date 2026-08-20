@@ -424,3 +424,28 @@ matching `getInfo`). Do not add ffmpeg, a second extractor, or a JS evaluator.
 `packages/audio-engine` YouTube source module.
 
 **Tags:** platform
+
+---
+
+## Context
+
+Slice 2 grill set empty-queue leave as immediate and parked
+`alonetimeuntilstop` in slice 5.
+
+## Problem
+
+Operators still wanted the bot to wait after music stopped so they could
+queue another track without a rejoin. Agents treated that as the slice 5
+alone-timer (the bot is the only member in the channel).
+
+## Rule
+
+Idle leave (nothing current, empty upcoming, still in voice) is not the
+alone-timer (nobody else is in the channel). Idle leave is a session
+timeout. Alone-timer stays slice 5.
+
+## Applies to
+
+Leave policy in specs, plans, and the guild music session idle path.
+
+**Tags:** product
