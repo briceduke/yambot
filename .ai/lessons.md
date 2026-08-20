@@ -449,3 +449,31 @@ timeout. Alone-timer stays slice 5.
 Leave policy in specs, plans, and the guild music session idle path.
 
 **Tags:** product
+
+---
+
+## Context
+
+Slice 2 `/execute` shipped code but left the spec, plan, task cards, grill
+run, and architecture/lessons untracked. The finish report did not list the
+spec's human smoke steps, so the operator had to open the spec.
+
+## Problem
+
+Slice `.ai/` files that belong to the work never entered git. The human
+smoke script lived only in the spec. CI passing was easy to read as live
+pause/leave proved.
+
+## Rule
+
+The execute parent commits slice `.ai/` files through `/check-and-commit`
+(spec, plan + task cards, grill/research runs, architecture/lessons). At
+finish, paste the spec's human smoke steps; do not invent a second script.
+Do not wait 5 minutes when the spec says the timer seam is CI-covered. Do
+not mark live pause/leave as proved from CI.
+
+## Applies to
+
+`/execute` serial commit lane and finish report; `/test` unverifiable rows.
+
+**Tags:** process, execute
