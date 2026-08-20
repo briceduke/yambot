@@ -1,14 +1,14 @@
 ---
 name: execute
-description: Execute an approved implementation plan from .ai/plans/. Default is to fan out one implementer per ready task in each parallel group. Parent runs verify, /check-and-commit, and Progress updates in-process (serial). Use when asked to implement an approved plan. Do not use without plan approval. Do not redesign; a plan gap means stop and re-plan.
+description: Execute an approved implementation plan from .ai/plans/. Default is to fan out one implementer per ready task in each parallel group. Parent runs verify, /check-and-commit (code and slice .ai/ docs), Progress updates, and a finish report that pastes the spec's human smoke steps. Use when asked to implement an approved plan. Do not use without plan approval. Do not redesign; a plan gap means stop and re-plan.
 disable-model-invocation: true
 ---
 
 # execute — run an approved plan
 
 Input: an **approved** plan at `.ai/plans/{date}-{slug}.md`. Output: working,
-verified, committed code on the feature branch, with the plan Progress checklist
-fully checked off.
+verified, committed code and slice `.ai/` docs on the feature branch, with the
+plan Progress checklist fully checked off.
 
 Your job is to follow the plan exactly — not to improve it. Deviations are
 blockers, not judgment calls.
@@ -34,6 +34,12 @@ at {path}."
 4. **"Smoke nit → root-cause → fix → test → commit agents."** Wrong. After the
    slice ships, a 1–3 file smoke bug is parent `/fix` + one `/check-and-commit`
    unless it spans >2 packages or needs an unknown multi-file root cause.
+5. **"Code is committed, .ai/ can wait."** Wrong. Spec, plan, task cards, grill
+   or research runs, and architecture/lessons that belong to the slice go through
+   the serial commit lane. Do not leave them untracked.
+6. **"CI passed, so live pause/leave is proved."** Wrong. Paste the spec's
+   human smoke steps for the operator. Do not mark unverifiable voice behavior
+   as proved from CI.
 
 ## Step 1: Load and sanity-check
 
@@ -76,7 +82,7 @@ Walk groups in order (A, then B, then …). For each group:
 | Who | Does |
 |-----|------|
 | Implementer | Task steps only. No commit. No plan file edits. Thin context only. |
-| Parent (you) | After implementers return: **serial** verify (if needed) → `/check-and-commit` **in-process** → check Progress off. One task at a time. |
+| Parent (you) | After implementers return: **serial** verify (if needed) → `/check-and-commit` **in-process** → check Progress off. One task at a time. Docs commit for slice `.ai/` files (Step 3). Finish report pastes the spec's human smoke steps. |
 
 Parallelism stops at implementation. The shared branch and the plan Progress
 list have a **single writer**: the parent, in a serial commit lane.
@@ -111,7 +117,13 @@ For each queued task, **one at a time**, **you** (the parent):
    This skill does not invent a second commit door; it runs the existing skill.
 3. **Progress** — after that commit succeeds, **you** check that task off in
    the plan Progress list. Never ask a commit agent to edit the plan. Never edit
-   Progress for task N+1 until task N’s commit + checkbox are done.
+   Progress for task N+1 until task N’s commit + checkbox are done. Include the
+   plan file in the next serial commit (or the docs commit below).
+4. **Docs commit** — after the code tasks (or as its own serial commit), stage
+   the slice `.ai/` files that belong to this work: spec, plan, task cards, grill
+   or research runs, architecture and lessons updates. Stage only those docs.
+   Do not stage secrets. Run `/check-and-commit` in-process. Do not leave those
+   files untracked. Workers still must not edit `.ai/plans/` Progress.
 
 Reminders that override anything the plan forgot:
 
@@ -146,6 +158,8 @@ Red flags — if you think any of these, STOP:
 - "I'll finish the data layer first even though the plan is slice-first"
 - "three tasks finished — I'll spawn three check-and-commit agents now"
 - "I'll tell every worker to read lessons.md and the whole plan"
+- "I'll leave the spec and plan untracked until the PR"
+- "CI passed, so live pause/leave is proved"
 
 ## Step 5: Finish (and smoke)
 
@@ -159,19 +173,33 @@ After the last task:
    plan’s final proof task says so.
 2. For user-facing work: run `/test` (or the prove command for this change
    type). A UI change without a passing behavior proof is **not done**.
-3. Review the branch with `/self-review`.
-4. Report:
+3. If the spec Proof plan has a **human smoke script**, paste those steps in
+   the finish report. Point at the spec path. Copy from the spec — do not invent
+   a second script. Do not wait 5 minutes in smoke if the spec already says the
+   timer seam is CI-covered. Do not mark live pause, leave, elapsed, or other
+   unverifiable voice behavior as proved from CI.
+4. Review the branch with `/self-review`.
+5. Report:
 
 ```markdown
 ## Implementation complete
 **Plan:** .ai/plans/{date}-{slug}.md (all tasks checked)
 **Branch / commits:** {branch}, {N} commits
 **Parallelism used:** {groups + implementer counts, or sequential reason}
-**Commit lane:** serial, parent in-process
+**Commit lane:** serial, parent in-process (code + slice .ai/ docs)
 **Tests:** {commands + results}
 **Behavior proof:** {flows via /test, or explicit N/A for non-UI}
+**Human smoke:** pasted below from {spec path} — operator must run; not proved by CI
 **Deviations from plan:** {none, or list with reasons}
 **Ready for:** PR (only if the user asked)
+
+## Human smoke
+**Spec:** {spec path}
+
+{paste the spec's numbered human smoke steps here, unchanged}
+
+Do not wait 5 minutes if the spec says the timer seam is CI-covered.
+Do not mark live pause/leave as proved from CI.
 ```
 
 ### Post-smoke protocol

@@ -121,8 +121,11 @@ Rules:
 - UNVERIFIABLE when the environment cannot support the check — flag for human
   verification; do not treat as green.
 - When the Proof plan lists **unverifiable** items: report each as
-  **UNVERIFIABLE**, name the **human smoke script**, and do **not** mark the
-  slice green. Automated PASS does not clear those rows.
+  **UNVERIFIABLE**. Paste the spec's human smoke steps (the same script
+  `/execute` finish pastes). Point at the spec path. Do not invent a second
+  smoke script. Do not mark the slice green. Automated PASS does not clear
+  those rows. Do not wait 5 minutes if the spec says the timer seam is
+  CI-covered. Do not mark live pause/leave as proved from CI.
 - Never abort the whole run for one failure — finish the planned cases.
 
 ## Done when
