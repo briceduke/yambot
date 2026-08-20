@@ -4,6 +4,7 @@ import type { Track } from "@yambot/audio-engine";
 import type { CommandContext } from "./command-context.ts";
 import type { EnginePort, GuildMusicSession } from "./guild-music-session.ts";
 import { dispatchCommand, readPrefixDoorCommand } from "./main.ts";
+import { registeredSlashNames } from "./register-commands.ts";
 
 describe("dispatchCommand", () => {
   test("slash-like and prefix-like play both run executePlay", async () => {
@@ -76,6 +77,48 @@ describe("dispatchCommand", () => {
     await dispatchCommand("help", ctx, undefined);
     expect(ctx.replies).toEqual([]);
   });
+
+  test("prefix !np runs nowplaying", async () => {
+    const parsed = readPrefixDoorCommand({
+      content: "!np",
+      prefix: "!",
+      isBot: false,
+      inGuild: true,
+    });
+    expect(parsed).toEqual({ name: "nowplaying", args: "" });
+    const ctx = createContext({ args: "", invokerVoiceChannelId: null });
+    await dispatchCommand(parsed?.name ?? "", ctx, undefined);
+    expect(ctx.replies).toEqual(["Nothing is playing."]);
+  });
+
+  test("prefix !leave runs stop", async () => {
+    const parsed = readPrefixDoorCommand({
+      content: "!leave",
+      prefix: "!",
+      isBot: false,
+      inGuild: true,
+    });
+    expect(parsed).toEqual({ name: "stop", args: "" });
+    const ctx = createContext({ args: "", invokerVoiceChannelId: null });
+    await dispatchCommand(parsed?.name ?? "", ctx, undefined);
+    expect(ctx.replies).toEqual(["Nothing is playing."]);
+  });
+
+  test("slash names np and leave are unknown", async () => {
+    const npCtx = createContext({ args: "", invokerVoiceChannelId: null });
+    await dispatchCommand("np", npCtx, undefined);
+    expect(npCtx.replies).toEqual([]);
+
+    const leaveCtx = createContext({ args: "", invokerVoiceChannelId: null });
+    await dispatchCommand("leave", leaveCtx, undefined);
+    expect(leaveCtx.replies).toEqual([]);
+  });
+
+  test("remove with args 1 runs executeRemove", async () => {
+    const ctx = createContext({ args: "1", invokerVoiceChannelId: null });
+    await dispatchCommand("remove", ctx, undefined);
+    expect(ctx.replies).toEqual(["No track at position 1."]);
+  });
 });
 
 describe("readPrefixDoorCommand", () => {
@@ -110,6 +153,45 @@ describe("readPrefixDoorCommand", () => {
         inGuild: true,
       }),
     ).toEqual({ name: "play", args: "never gonna" });
+  });
+
+  test("accepts the seven new canonical prefix names", () => {
+    const names: readonly string[] = [
+      "pause",
+      "resume",
+      "nowplaying",
+      "remove",
+      "shuffle",
+      "clear",
+      "stop",
+    ];
+    for (const name of names) {
+      expect(
+        readPrefixDoorCommand({
+          content: `!${name}`,
+          prefix: "!",
+          isBot: false,
+          inGuild: true,
+        }),
+      ).toEqual({ name, args: "" });
+    }
+  });
+});
+
+describe("registeredSlashNames", () => {
+  test("exported registration names are the ten canonical slash names", () => {
+    expect(registeredSlashNames).toEqual([
+      "play",
+      "skip",
+      "queue",
+      "pause",
+      "resume",
+      "nowplaying",
+      "remove",
+      "shuffle",
+      "clear",
+      "stop",
+    ]);
   });
 });
 
