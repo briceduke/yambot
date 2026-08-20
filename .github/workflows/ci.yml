@@ -28,3 +28,15 @@ jobs:
 
       - name: Structure
         run: bun run checks:structure
+
+      - name: Checks
+        run: bun run checks
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test audio-engine
+        run: bun test packages/audio-engine
+
+      - name: Test bot
+        run: bun test packages/bot

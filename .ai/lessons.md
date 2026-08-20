@@ -376,3 +376,104 @@ The judge checks for copied structure on ship; risky slices get a raptor pass.
 Engine and bot design, specs, plans, judge reviews.
 
 **Tags:** product
+
+---
+
+## Context
+
+Root `bun start` is `bun run --cwd packages/bot start`. Node
+`--env-file-if-exists=.env` is resolved against that cwd.
+
+## Problem
+
+Operators put `.env` at the repo root (README). Start looked for
+`packages/bot/.env`, skipped it, and exited with a missing-token error.
+
+## Rule
+
+When start changes cwd into a package, the env-file path must point at
+repo-root `.env` (`../../.env` from `packages/bot`). Do not add dotenv.
+
+## Applies to
+
+Bot `start` scripts, README run steps, smoke step 0.
+
+**Tags:** process, product
+
+---
+
+## Context
+
+youtubei.js v18 `download()` for audio-only webm/opus.
+
+## Problem
+
+`chooseFormat({ type: "audio", format: "webm", codec: "opus" })` succeeds, so
+resolve looks fine. `download()` then fails: it defaults `quality` to `360p`
+(drops audio-only formats: "No matching formats found") and the WEB client
+lists formats with no stream URLs ("No valid URL to decipher"). Both map to
+`Couldn't play that YouTube video.`
+
+## Rule
+
+Pass `quality: "best"` and `client: "VISIONOS"` on InnerTube download (and
+matching `getInfo`). Do not add ffmpeg, a second extractor, or a JS evaluator.
+
+## Applies to
+
+`packages/audio-engine` YouTube source module.
+
+**Tags:** platform
+
+---
+
+## Context
+
+Slice 2 grill set empty-queue leave as immediate and parked
+`alonetimeuntilstop` in slice 5.
+
+## Problem
+
+Operators still wanted the bot to wait after music stopped so they could
+queue another track without a rejoin. Agents treated that as the slice 5
+alone-timer (the bot is the only member in the channel).
+
+## Rule
+
+Idle leave (nothing current, empty upcoming, still in voice) is not the
+alone-timer (nobody else is in the channel). Idle leave is a session
+timeout. Alone-timer stays slice 5.
+
+## Applies to
+
+Leave policy in specs, plans, and the guild music session idle path.
+
+**Tags:** product
+
+---
+
+## Context
+
+Slice 2 `/execute` shipped code but left the spec, plan, task cards, grill
+run, and architecture/lessons untracked. The finish report did not list the
+spec's human smoke steps, so the operator had to open the spec.
+
+## Problem
+
+Slice `.ai/` files that belong to the work never entered git. The human
+smoke script lived only in the spec. CI passing was easy to read as live
+pause/leave proved.
+
+## Rule
+
+The execute parent commits slice `.ai/` files through `/check-and-commit`
+(spec, plan + task cards, grill/research runs, architecture/lessons). At
+finish, paste the spec's human smoke steps; do not invent a second script.
+Do not wait 5 minutes when the spec says the timer seam is CI-covered. Do
+not mark live pause/leave as proved from CI.
+
+## Applies to
+
+`/execute` serial commit lane and finish report; `/test` unverifiable rows.
+
+**Tags:** process, execute

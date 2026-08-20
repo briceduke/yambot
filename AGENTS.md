@@ -60,11 +60,12 @@ Run these to prove health. The per-change-type ladder lives in Constitution §5.
 | Check | Command | When |
 |-------|---------|------|
 | Structure | `bun run checks:structure` | Before commit; CI |
+| Engine seam (R1/R2) | `bun run checks` (`engine-seam`) | Before commit; CI |
 | Typecheck | `bun run typecheck` | Any TypeScript change |
 | Tests | `bun test` (scope to the touched package) | Any logic change |
 | Human smoke | Play a track in the test guild; hear audio; skip works | Voice, extraction, or Discord-visible change |
 
-Add conformance or invariant scripts only when constitution invents a real rule — not empty scanners “for later.” The R1/R2 dependency scan lands with slice 1, when the packages it scans exist.
+Add conformance or invariant scripts only when constitution invents a real rule — not empty scanners “for later.” The R1/R2 scan is `engine-seam` inside `bun run checks`.
 
 ## Task Router
 
@@ -97,7 +98,7 @@ Filled by `/constitution` (2026-08-11) from `.ai/product.md` and `.ai/architectu
    - **R2 One dependency arrow.** Bot depends on engine; engine never depends on bot. Check: same scan as R1.
    - **R3 Zero Java.** No JVM, no Lavalink, no lavaplayer — not as a dependency, sidecar, or spawned process. Check: dependency review; deny anything that needs a JVM.
    - **R4 Parity is UX, not internals.** Match JMusicBot behavior and capability; never copy JMusicBot or lavaplayer internal design. Check: judge review on ship; raptor pass on risky slices.
-4. **Patterns to copy:** Bot command module (one file per command) and engine source module (one module per source site). Both get minted by the slice 1 vertical cut (play path end to end). Structure rules for the two app packages go into `packages/checks/configs/structure.ts` when slice 1 creates those folders; today the check enforces the generic package shape.
+4. **Patterns to copy:** Bot command module (one file per command) and engine source module (one module per source site). Both get minted by the slice 1 vertical cut (play path end to end). Structure rules for the two app packages now live in `packages/checks/configs/structure.ts`.
 5. **Proof ladder:**
    - Engine logic (resolve, queue, player) → `bun run typecheck` + `bun test packages/audio-engine`.
    - Bot command or session wiring → typecheck + `bun test packages/bot` + human smoke in the test guild for Discord-visible behavior.
@@ -109,13 +110,13 @@ Filled by `/constitution` (2026-08-11) from `.ai/product.md` and `.ai/architectu
 
 ## First examples
 
-First supervised build of each pattern to copy. Prefer a vertical slice (one thin path end to end). Empty until day 1–3. Mint a First examples row the week a new pattern ships (a second instance would otherwise invent).
+First supervised build of each pattern to copy. Prefer a vertical slice (one thin path end to end). Mint a First examples row the week a new pattern ships (a second instance would otherwise invent).
 
 | Pattern | First example path | What it shows |
 |---------|--------------------|---------------|
-| Core playback vertical slice | planned — slice 1 | Command → guild session → engine resolve → audio in voice, end to end |
-| Bot command module | planned — slice 1 (play command) | One file per command: parse input, call the session and engine, reply in channel |
-| Engine source module | planned — slice 1 (YouTube) | Resolve URL or search into track(s); no Discord types |
+| Core playback vertical slice | `packages/bot/src/main.ts` | command → guild session → engine resolve → audio in voice |
+| Bot command module | `packages/bot/src/commands/play.ts` | one file per command: parse input, call session, reply |
+| Engine source module | `packages/audio-engine/src/sources/youtube.ts` | resolve URL or search into a track; no Discord types |
 
 ## Cloud types
 
