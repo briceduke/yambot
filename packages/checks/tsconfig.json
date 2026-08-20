@@ -19,5 +19,6 @@
     "forceConsistentCasingInFileNames": true,
     "rootDir": "."
   },
-  "include": ["src/**/*.ts", "configs/**/*.ts"]
+  "include": ["src/**/*.ts", "configs/**/*.ts"],
+  "exclude": ["src/engine-seam/fixtures"]
 }

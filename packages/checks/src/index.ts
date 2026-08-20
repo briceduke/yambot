@@ -2,6 +2,7 @@
  * Public entry for the checks package.
  */
 
+export { runEngineSeam } from "./engine-seam/run.ts";
 export { resolveAppRoot, resolveChecksRoot } from "./paths.ts";
 export { reportAll, reportResult } from "./report.ts";
 export { isScannerName, runAllScanners, runScanner } from "./run-all.ts";

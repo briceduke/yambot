@@ -7,13 +7,11 @@
     "packages/*"
   ],
   "scripts": {
-    "prepare": "factory install-rules",
     "checks": "bun run --cwd packages/checks check",
     "checks:structure": "bun run --cwd packages/checks check:structure",
     "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun test"
-  },
-  "devDependencies": {
-    "factory": "file:///C:/Users/brice/dev/blueprint"
+    "test": "bun test",
+    "start": "bun run --cwd packages/bot start",
+    "dev": "bun run --cwd packages/bot dev"
   }
 }
