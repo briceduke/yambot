@@ -53,7 +53,18 @@ export const structureConfig: StructureConfig = {
     {
       id: "bot-command-module",
       match: "packages/bot/src/commands",
-      requiredFiles: ["play.ts", "skip.ts", "queue.ts"],
+      requiredFiles: [
+        "play.ts",
+        "skip.ts",
+        "queue.ts",
+        "pause.ts",
+        "resume.ts",
+        "nowplaying.ts",
+        "remove.ts",
+        "shuffle.ts",
+        "clear.ts",
+        "stop.ts",
+      ],
     },
   ],
 };
