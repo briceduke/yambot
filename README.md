@@ -25,15 +25,17 @@ https://discord.com/oauth2/authorize?client_id=CLIENT_ID&scope=bot%20application
 2. From the repo root run `bun install`, then `bun start`.
 3. The bot shows online in Discord.
 
-Slash commands `/play`, `/skip`, and `/queue` register themselves when the bot comes online (every guild on ready, and again when invited to a new guild). No extra register step. If they do not appear, re-invite with `applications.commands` and restart.
+Slash commands `/play`, `/skip`, `/queue`, `/pause`, `/resume`, `/nowplaying`, `/remove`, `/shuffle`, `/clear`, and `/stop` register themselves when the bot comes online (every guild on ready, and again when invited to a new guild). No extra register step. If they do not appear, re-invite with `applications.commands` and restart.
 
 `bun run dev` starts the same bot with Node `--watch` (restarts on file change).
 
 ## Commands
 
-Slash: `/play`, `/skip`, `/queue`.
+Slash: `/play`, `/skip`, `/queue`, `/pause`, `/resume`, `/nowplaying`, `/remove`, `/shuffle`, `/clear`, `/stop`.
 
-Prefix (default `!`; override with `COMMAND_PREFIX`): `!play`, `!skip`, `!queue`.
+Prefix (default `!`; override with `COMMAND_PREFIX`): `!play`, `!skip`, `!queue`, `!pause`, `!resume`, `!nowplaying` (`!np`), `!remove`, `!shuffle`, `!clear`, `!stop` (`!leave`).
+
+After the last track the bot stays 5 minutes, then leaves. `/stop` leaves now.
 
 If the process exits and the message mentions Message Content, enable that intent in the portal and restart.
 

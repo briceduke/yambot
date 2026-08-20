@@ -16,9 +16,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { CommandContext } from "./command-context.ts";
+import { executeClear } from "./commands/clear.ts";
+import { executeNowPlaying } from "./commands/nowplaying.ts";
+import { executePause } from "./commands/pause.ts";
 import { executePlay } from "./commands/play.ts";
 import { executeQueue } from "./commands/queue.ts";
+import { executeRemove } from "./commands/remove.ts";
+import { executeResume } from "./commands/resume.ts";
+import { executeShuffle } from "./commands/shuffle.ts";
 import { executeSkip } from "./commands/skip.ts";
+import { executeStop } from "./commands/stop.ts";
 import { createDiscordVoicePort } from "./discord-voice.ts";
 import {
   createSession,
@@ -43,15 +50,47 @@ const engine: EnginePort = {
   openTrackAudio,
 };
 
-const knownCommandNames = new Set(["play", "skip", "queue"]);
+const prefixAliases: Readonly<Record<string, string>> = {
+  np: "nowplaying",
+  leave: "stop",
+};
+
+const knownCommandNames = new Set([
+  "play",
+  "skip",
+  "queue",
+  "pause",
+  "resume",
+  "nowplaying",
+  "remove",
+  "shuffle",
+  "clear",
+  "stop",
+]);
+
+interface SessionCommand {
+  (ctx: CommandContext, session: GuildMusicSession | undefined): Promise<void>;
+}
+
+const sessionCommands: Readonly<Record<string, SessionCommand>> = {
+  skip: executeSkip,
+  queue: executeQueue,
+  pause: executePause,
+  resume: executeResume,
+  nowplaying: executeNowPlaying,
+  remove: executeRemove,
+  shuffle: executeShuffle,
+  clear: executeClear,
+  stop: executeStop,
+};
 
 const suppressedMentions = { parse: [] as const };
 
 /**
  * Runs one command module. Both doors call this with the same name and context.
- * @param name - Command name (`play`, `skip`, `queue`).
+ * @param name - Canonical command name. Prefix aliases are resolved before this.
  * @param ctx - Transport-agnostic command context.
- * @param session - Guild session; `play` requires one, skip/queue may omit it.
+ * @param session - Guild session; `play` requires one, other commands may omit it.
  */
 export async function dispatchCommand(
   name: string,
@@ -65,17 +104,16 @@ export async function dispatchCommand(
     await executePlay(ctx, session);
     return;
   }
-  if (name === "skip") {
-    await executeSkip(ctx, session);
+  const run: SessionCommand | undefined = sessionCommands[name];
+  if (run === undefined) {
     return;
   }
-  if (name === "queue") {
-    await executeQueue(ctx, session);
-  }
+  await run(ctx, session);
 }
 
 /**
  * Parses a prefix message and drops bots, DMs, non-commands, and unknown names.
+ * Maps prefix-only aliases (`np`, `leave`) to canonical names.
  * @param input - Prefix parse fields from a message-like object.
  * @returns Known command name and args, or `null` when the door should ignore.
  */
@@ -83,10 +121,14 @@ export function readPrefixDoorCommand(
   input: PrefixParseInput,
 ): ParsedPrefixCommand | null {
   const parsed: ParsedPrefixCommand | null = parsePrefixMessage(input);
-  if (parsed === null || !knownCommandNames.has(parsed.name)) {
+  if (parsed === null) {
     return null;
   }
-  return parsed;
+  const name: string = prefixAliases[parsed.name] ?? parsed.name;
+  if (!knownCommandNames.has(name)) {
+    return null;
+  }
+  return { name, args: parsed.args };
 }
 
 function startBot(): void {
@@ -232,7 +274,6 @@ function createSlashContext(
   interaction: ChatInputCommandInteraction,
   guild: Guild,
 ): CommandContext {
-  const query: string | null = interaction.options.getString("query");
   return {
     guildId: guild.id,
     channelId: interaction.channelId ?? "",
@@ -241,7 +282,7 @@ function createSlashContext(
       guild,
       interaction.user.id,
     ),
-    args: query ?? "",
+    args: readSlashArgs(interaction),
     reply: async (text: string): Promise<void> => {
       await interaction.editReply({
         content: text,
@@ -249,6 +290,20 @@ function createSlashContext(
       });
     },
   };
+}
+
+function readSlashArgs(interaction: ChatInputCommandInteraction): string {
+  if (interaction.commandName === "play") {
+    return interaction.options.getString("query") ?? "";
+  }
+  if (interaction.commandName === "remove") {
+    const position: number | null = interaction.options.getInteger("position");
+    if (position === null) {
+      return "";
+    }
+    return String(position);
+  }
+  return "";
 }
 
 function createPrefixContext(
