@@ -57,9 +57,9 @@ Ordered high-level cuts. Each slice ships an end-to-end user outcome. Do not sta
 
 **Outcome:** Everyday queue control in one session: pause/resume, now playing, remove, shuffle, clear, stop/leave, plus a leave policy. Same zero-transcode seam as slice 1.
 
-**In:** Those commands on both doors, wired to the same engine session API (`TrackQueue` grows remove/shuffle/clear; bot session grows pause/stop/leave). Leave policy locked at the 2026-08-17 grill: leave on `stop` and when the queue empties; do not leave when alone; voice-drop keeps the queue.
+**In:** Those commands on both doors, wired to the same engine session API (`TrackQueue` grows remove/shuffle/clear; bot session grows pause/stop/leave). Leave policy: leave now on `stop`; after the queue empties while still in voice, wait 5 minutes of nothing playing then leave (2026-08-19 addendum); do not leave when alone (no membership timer); voice-drop keeps the queue.
 
-**Out:** Volume, seek, lyrics, repeat/playnext/move/skipto, reconnect-with-position, live now-playing message. New source sites; playlists-as-sources; DJ roles.
+**Out:** Volume, seek, lyrics, repeat/playnext/move/skipto, reconnect-with-position, live now-playing message. New source sites; playlists-as-sources; DJ roles. Alone-timer and `stayinchannel` / idle-leave duration config wait for slice 5.
 
 ### 3 — Source breadth
 
@@ -81,7 +81,7 @@ Ordered high-level cuts. Each slice ships an end-to-end user outcome. Do not sta
 
 **Outcome:** DJ-role / guild setup and remaining JMusicBot-class commands. Hybrid slash+prefix is already locked (slice 1 grill); this slice completes prefix parity: guild-level prefix config and mention-as-prefix.
 
-**In:** Bot-side permissions and config; only persist if the slice needs settings to survive restart.
+**In:** Bot-side permissions and config; only persist if the slice needs settings to survive restart. Candidate knobs from JMusicBot: DJ role, guild prefix, `stayinchannel`, `alonetimeuntilstop` (alone in channel), and the slice 2 idle-leave duration (nothing playing).
 
 **Out:** SaaS accounts; dashboard.
 
