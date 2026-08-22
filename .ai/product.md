@@ -41,6 +41,7 @@ You want JMusicBot-class music in Discord, but you will not run Java (no JMusicB
 - Porting JMusicBot’s or lavaplayer’s internal design. UX parity is the contract; their architecture is not.
 - Shipping a standalone “TS lavaplayer for other bots” product to the world (in-repo package seam is fine; public engine product is not).
 - A remote Lavalink-compatible network protocol (in-process package is the shape).
+- Playing from Spotify. Third-party streaming is blocked; do not guess a YouTube match from a Spotify URL.
 
 ## Open risks
 
