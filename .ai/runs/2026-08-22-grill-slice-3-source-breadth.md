@@ -117,3 +117,59 @@ This grill is the first source cut, not “finish every source.”
   Rejected: `yt-dlp`. Rejected: a hand-rolled api-v2 scraper.
   Rejected: any extractor that depends on `ffmpeg-static`.
 - Architecture slice 3 In updated in the same turn.
+
+### 6. Scene walk (confirmed by user)
+
+Happy path: user in voice. `/play https://soundcloud.com/artist/track`
+defers (slash) then `Playing: {title} ({duration})`. Audio is audible
+(ffmpeg on PATH). `/scsearch lofi beats` plays or queues the top
+SoundCloud hit (`Playing:` / `Queued (#n):`). `/play never gonna give
+you up` still searches YouTube. `/nowplaying` shows title, elapsed,
+duration, and wrapped URL. `/skip` advances. Prefix `!scsearch` matches
+`/scsearch`.
+
+Baked-in:
+
+- Guild-scoped bulk PUT on `ready` / `guildCreate` adds `scsearch`.
+- `play` usage/description: YouTube or SoundCloud URL, or YouTube
+  search words.
+- Slash door defers at receipt; prefix sends a channel message; every
+  reply suppresses mentions; all replies public; same invite
+  permissions as slice 1.
+- ffmpeg is not required to start the bot or to play YouTube.
+- Missing ffmpeg on a SoundCloud open:
+  `Couldn't play that SoundCloud track: ffmpeg is not installed.`
+- SoundCloud set/playlist URL: not this slice (slice 4); resolve error,
+  nothing queued.
+- YouTube URL on `/scsearch`: resolve error, nothing queued.
+
+Failure modes:
+
+1. Invoker not in voice → `Join a voice channel first.` Nothing queued,
+   no join. Bot already playing in another channel of the guild →
+   `Already playing in #channel — join there.`
+2. Unresolvable SoundCloud (private, region, no stream, no search hit)
+   or a set/playlist URL → error reply, nothing added. YouTube URL on
+   `/scsearch` → error, nothing added. Dead track reached mid-queue →
+   `Skipping {title}: couldn't play it` and advance (slice 1 stands).
+3. SoundCloud play (or `scsearch` that starts audio) with ffmpeg
+   missing → the ffmpeg error above. YouTube still plays. Bot stays up.
+
+Invariant if Discord voice drops: slice 2 stands. Playback stops,
+current is dropped, in-memory queue survives, session is kept. Next
+`/play` or `/scsearch` rejoins. A drop never clears the queue.
+
+## Grill close (2026-08-22)
+
+- Fixed heuristics: Scene — walked and confirmed (decision 6).
+  Symmetric ops — `play` / `scsearch` both enqueue on the same session;
+  `remove` / `clear` / `stop` already slice 2; no new unlist for a
+  source. Platform contract — ACK/defer, registration of `scsearch`,
+  mention suppress, usage strings, ffmpeg-not-at-startup pinned in
+  decision 6. Transition honesty — N/A (nothing persisted; YouTube
+  operators who never play SoundCloud do not need ffmpeg).
+- Nothing else undecided for this first slice 3 cut.
+- Next: `/spec-writing` for slice 3, carrying decisions 1–6 as
+  pre-checked Design Decisions / Open Questions. Raptor check (new
+  source module + format enum + ffmpeg in the bot) → `/plan`. Commit
+  via `/check-and-commit` only.
