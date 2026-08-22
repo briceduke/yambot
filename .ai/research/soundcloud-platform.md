@@ -41,11 +41,11 @@ SoundCloud sets/playlists are slice 4. Spotify is not a source
    MP3. This slice opens HLS audio only (AAC first, MPEG if no AAC) so
    the closed format list grows by one member: `"hls/aac"`. **(grill,
    lib)**
-4. **What must the engine yield?** — Concatenated HLS segment bodies
-   (not m3u8 playlist text). `@discordjs/voice` `StreamType.Arbitrary`
-   pipes stdin to ffmpeg; ffmpeg cannot fetch playlist segments from a
-   piped m3u8. The engine does not spawn ffmpeg and does not emit PCM.
-   **(lib + seam)**
+4. **What must the engine yield?** — HLS segment bodies as they arrive
+   (not m3u8 playlist text, not a full-track buffer).
+   `@discordjs/voice` `StreamType.Arbitrary` pipes stdin to ffmpeg;
+   ffmpeg cannot fetch playlist segments from a piped m3u8. The engine
+   does not spawn ffmpeg and does not emit PCM. **(lib + seam)**
 5. **Where does ffmpeg run?** — PATH binary in the bot, only when
    playing `"hls/aac"`. Missing ffmpeg must not block startup or
    YouTube. User-safe reply:
@@ -64,7 +64,7 @@ SoundCloud sets/playlists are slice 4. Spotify is not a source
 - YouTube URL on `/scsearch` → resolve error, nothing queued.
 - `util.streamTrack` in the engine → ffmpeg in the engine (forbidden).
 - Piped m3u8 playlist to `StreamType.Arbitrary` → ffmpeg cannot follow
-  segments. Yield concatenated segment bytes.
+  segments. Yield segment bytes as they arrive.
 - Missing PATH ffmpeg on first SoundCloud play → pinned error; YouTube
   still plays; process stays up.
 - Dead SoundCloud track mid-queue → slice 1 skip-and-advance stands.

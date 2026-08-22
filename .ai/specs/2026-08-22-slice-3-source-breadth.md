@@ -11,6 +11,8 @@ JMusicBot UX plus the slice 3 grill settle the domain.
 YouTube source module and play command; do not invent a second layout)
 and `.ai/specs/2026-08-17-slice-2-core-music-controls.md` (same session,
 pause, leave, now playing).
+**Raptor:** `.ai/runs/2026-08-22-raptor-slice-3-source-breadth.md`
+(passed; cuts applied below).
 
 ## Problem
 
@@ -56,7 +58,7 @@ not every remaining site at once.
 | Resolve hint | `resolveTrack({ query, source?: "soundcloud" })`. Omit `source` on `/play`. `/scsearch` passes the hint. `openTrackAudio` stays `{ track }`. | Grill 3. One public pair. |
 | Format + ffmpeg | Grow `audioFormats` with `"hls/aac"`. Bot maps it to `StreamType.Arbitrary` (PATH ffmpeg). `"webm/opus"` stays `StreamType.WebmOpus`. | Grill 4. YouTube stays zero-transcode. |
 | Extractor | Production dependency `soundcloud.ts` (api-v2, no operator key). Wrap behind an injectable client. Never call `util.streamTrack` / `downloadTrack`. | Grill 5. Those helpers spawn ffmpeg. Platform note. |
-| HLS bytes | Yield concatenated HLS segment bodies, not m3u8 playlist text. Prefer HLS AAC; if none, HLS MPEG; same `"hls/aac"` tag. | Piped playlist cannot drive Arbitrary stdin. One new format member. |
+| HLS bytes | Yield HLS segment bodies as they arrive (not m3u8 text, not a full-track buffer). Prefer HLS AAC; if none, HLS MPEG; same `"hls/aac"` tag. | Piped playlist cannot drive Arbitrary stdin. MPEG fallback is one if, not a second format. |
 | Scene | Happy path and three failure modes walked at the grill (see Scene). | Grill 6. |
 | Scoping | Same in-memory `Map<guildId, GuildMusicSession>`. No new store. | Constitution scoping axis. |
 | Hard rules | R1: no Discord in the engine; ffmpeg stays bot-side. R2: bot → engine. R3: zero Java. R4: UX parity; do not copy JMusicBot/lavaplayer internals. | Same scan as slice 1. |
@@ -70,7 +72,7 @@ not every remaining site at once.
 | Transition | No persisted state. Behavior change: a SoundCloud URL on `/play` plays SoundCloud instead of YouTube-searching the URL. YouTube-only operators do not need ffmpeg. | Grill close. |
 | Unverifiable | Live SoundCloud audio, PATH ffmpeg in a real guild, YouTube still audible without ffmpeg. Named smoke below. | CI has no Discord voice. |
 | Router | New `packages/audio-engine/src/resolve.ts` owns public `resolveTrack` / `openTrackAudio`. `youtube.ts` keeps `*WithClient` + `parseYoutubeQuery`. | Public names cannot stay YouTube-only. Not a plugin registry. |
-| Raptor refuse | No registry, no engine Player, no engine ffmpeg, no `ffmpeg-static`, no Spotify module, no extra format members, no `scsearch:` on `/play`. | Fewer parts. |
+| Raptor refuse | No registry, no engine Player, no engine ffmpeg, no `ffmpeg-static`, no Spotify module, no extra format members, no `scsearch:` on `/play`, no PATH probe, no `playlist-url` parse kind, no full-track buffer. | `.ai/runs/2026-08-22-raptor-slice-3-source-breadth.md` |
 
 ## Behavior
 
@@ -158,7 +160,6 @@ export function parseSoundCloudQuery(
   query: string,
 ):
   | { readonly kind: "track-url"; readonly url: string }
-  | { readonly kind: "playlist-url" }
   | { readonly kind: "search"; readonly query: string };
 
 export function resolveSoundCloudTrackWithClient(
@@ -177,23 +178,22 @@ finds a client id). Wrap `tracks.get`, `tracks.search`, and HLS open.
 Do not call `util.streamTrack`, `util.downloadTrack`, or
 `m3uReadableStream`. Those spawn ffmpeg and may load `ffmpeg-static`.
 
-`parseSoundCloudQuery`:
+`parseSoundCloudQuery` (copy `parseYoutubeQuery`):
 
-- Path contains `/sets/` → `playlist-url`.
+- Path contains `/sets/` → throw `TrackResolveError`:
+  `Playlists are not supported yet. Use a track URL or search words.`
 - SoundCloud host otherwise → `track-url` (include `on.soundcloud.com`
   and `snd.sc`; the API resolve follows shorts).
 - Else → `search`.
 
 `resolveSoundCloudTrackWithClient`:
 
-1. `playlist-url` → `TrackResolveError`:
-   `Playlists are not supported yet. Use a track URL or search words.`
-2. `search` → `searchFirstTrackUrl`; `null` →
+1. `search` → `searchFirstTrackUrl`; `null` →
    `No SoundCloud results for that search.` Then `getTrack` on that URL.
-3. `track-url` → `getTrack`.
-4. `kind !== "track"` → same playlist error as step 1.
-5. `hasHlsAudio === false` → `That track has no playable audio.`
-6. Return `{ title, uri: permalinkUrl, durationSeconds }`.
+2. `track-url` → `getTrack`.
+3. `kind !== "track"` → same playlist error as parse (`/sets/`).
+4. `hasHlsAudio === false` → `That track has no playable audio.`
+5. Return `{ title, uri: permalinkUrl, durationSeconds }`.
    `durationSeconds` is `Math.floor(apiDurationMs / 1000)` (API duration
    is milliseconds). Missing duration → `0`.
 
@@ -207,8 +207,9 @@ Map other library failures to
    `That track has no playable audio.`
 2. Resolve the transcoding URL to a playlist URL (same HTTP as
    `util.streamLink`: GET transcoding URL + `client_id`, read `url`).
-3. Fetch the m3u8. Fetch each segment URL. Concatenate segment bodies
-   into one `ReadableStream<Uint8Array>`.
+3. Fetch the m3u8. Fetch each segment URL. Push each segment body into
+   the `ReadableStream<Uint8Array>` as it arrives. Do not buffer the
+   whole track first.
 4. Return `{ stream, format: "hls/aac" }`.
 
 Do not yield playlist text. Do not remux with ffmpeg. Do not emit PCM.
@@ -225,9 +226,10 @@ const playbackInputByFormat: { readonly [K in AudioFormat]: StreamType } = {
 ```
 
 On `"hls/aac"` play, if ffmpeg is missing from PATH, `play` throws
-`Couldn't play that SoundCloud track: ffmpeg is not installed.` Detect
-on that play (probe or map the spawn error). Do not probe at startup.
-Do not add `ffmpeg-static`. Do not set `inlineVolume`.
+`Couldn't play that SoundCloud track: ffmpeg is not installed.` Map
+the spawn error from `createAudioResource` / the player. Do not add a
+PATH probe. Do not probe at startup. Do not add `ffmpeg-static`. Do
+not set `inlineVolume`.
 
 `playNow` still throws on first-track open/play failure (nothing
 current, nothing queued). Mid-queue open/play failure still announces
@@ -268,8 +270,11 @@ fails with `That is not a SoundCloud track.`
 
 `scsearch` creates a session and binds the announce channel the same
 way `play` does (`getOrCreateGuildSession` in `runDoorCommand`).
-`readSlashArgs` reads the `query` option for `scsearch` as well as
-`play`. Add `scsearch` to `knownCommandNames` and `dispatchCommand`.
+`readSlashArgs` reads the `query` option for `play` and `scsearch`
+with one extra `||` (no query-command list). Add `scsearch` to
+`knownCommandNames` and `dispatchCommand`. Same for session create:
+`name === "play" || name === "scsearch"`. Do not add a session-create
+command registry.
 
 Guild-scoped bulk PUT on `ready` / `guildCreate` includes `scsearch`
 (optional string option `query`). Same-name PUT stays idempotent.
@@ -391,7 +396,7 @@ Rollback: run the slice 2 build. No data migration to undo.
       - `kind !== "track"` reject
       - no HLS audio reject
       - `openSoundCloudAudioWithClient` yields `format: "hls/aac"` and
-        the fake concatenated stream
+        the fake HLS segment stream
       - existing YouTube `*WithClient` tests still pass
 - [ ] `bun test packages/bot` passes and covers, no network, no Discord
       login:
@@ -440,23 +445,25 @@ territory):
 
 - [x] Public router — **Answer:** `resolve.ts` owns the public pair;
       YouTube file keeps `*WithClient`.
-- [x] HLS bytes — **Answer:** concatenated segment bodies, not m3u8
-      text. Prefer AAC, then MPEG; one format tag `"hls/aac"`.
+- [x] HLS bytes — **Answer:** segment bodies as they arrive, not m3u8
+      text, not a full-track buffer. Prefer AAC, then MPEG; one format
+      tag `"hls/aac"`.
 - [x] Banned library helpers — **Answer:** do not call
       `util.streamTrack` / `downloadTrack` / `m3uReadableStream`.
 - [x] Duration — **Answer:** SoundCloud API milliseconds →
       `Math.floor(ms / 1000)`.
 - [x] Canonical URI — **Answer:** `permalink_url`.
-- [x] Playlist detect — **Answer:** `/sets/` in the path, or resolved
-      `kind !== "track"`.
+- [x] Playlist detect — **Answer:** `parseSoundCloudQuery` throws on
+      `/sets/` (copy YouTube parse). Resolved `kind !== "track"` still
+      rejects shorts that land on a set.
 - [x] YouTube URL on `scsearch` — **Answer:**
       `That is not a SoundCloud track.`
 - [x] Empty search — **Answer:**
       `No SoundCloud results for that search.`
 - [x] Generic SoundCloud failure — **Answer:**
       `Couldn't play that SoundCloud track.`
-- [x] ffmpeg-miss — **Answer:** detect on `"hls/aac"` play, not at
-      startup; pinned message above.
+- [x] ffmpeg-miss — **Answer:** map the spawn error on `"hls/aac"`
+      play; no PATH probe; not at startup; pinned message above.
 - [x] `scsearch` session — **Answer:** create/bind announce like
       `play`.
 - [x] `CommandContext` — **Answer:** unchanged; `scsearch` uses
@@ -525,8 +532,10 @@ Human smoke script (test guild; slice 2 smoke already green):
 
 ## Changelog
 
+- 2026-08-22: raptor pass (`.ai/runs/2026-08-22-raptor-slice-3-source-breadth.md`).
+  Cut `playlist-url` parse kind, PATH probe, and full-track HLS buffer.
+  Status still ready-for-plan. Next: `/plan`.
 - 2026-08-22: created from the slice 3 grill (decisions 1–6 carried in
   as settled). Wrote `.ai/research/soundcloud-platform.md`. Settled the
   writing-time details listed in Open questions. Status:
-  ready-for-plan. Raptor check (new source module + format enum +
-  ffmpeg in the bot) then `/plan`.
+  ready-for-plan.
