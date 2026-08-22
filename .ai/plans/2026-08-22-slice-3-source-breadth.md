@@ -5,7 +5,7 @@
 **Grill:** `.ai/runs/2026-08-22-grill-slice-3-source-breadth.md`
 **Raptor:** `.ai/runs/2026-08-22-raptor-slice-3-source-breadth.md`
 **Branch:** `cursor/slice-3-source-breadth-spec-8fe8`
-**Status:** draft — waiting for approval
+**Status:** approved
 **Ordering:** shared foundation required — `"hls/aac"` must exist on `AudioFormat` before the SoundCloud module can return it. After Task 1, the router and the bot ffmpeg arm are disjoint.
 **Lessons:** `engine-seam`, `product`, `process`, `platform`
 
