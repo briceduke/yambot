@@ -21,6 +21,7 @@ import { executeNowPlaying } from "./commands/nowplaying.ts";
 import { executePause } from "./commands/pause.ts";
 import { executePlay } from "./commands/play.ts";
 import { executeQueue } from "./commands/queue.ts";
+import { executeScsearch } from "./commands/scsearch.ts";
 import { executeRemove } from "./commands/remove.ts";
 import { executeResume } from "./commands/resume.ts";
 import { executeShuffle } from "./commands/shuffle.ts";
@@ -57,6 +58,7 @@ const prefixAliases: Readonly<Record<string, string>> = {
 
 const knownCommandNames = new Set([
   "play",
+  "scsearch",
   "skip",
   "queue",
   "pause",
@@ -90,18 +92,22 @@ const suppressedMentions = { parse: [] as const };
  * Runs one command module. Both doors call this with the same name and context.
  * @param name - Canonical command name. Prefix aliases are resolved before this.
  * @param ctx - Transport-agnostic command context.
- * @param session - Guild session; `play` requires one, other commands may omit it.
+ * @param session - Guild session; `play` and `scsearch` require one, other commands may omit it.
  */
 export async function dispatchCommand(
   name: string,
   ctx: CommandContext,
   session: GuildMusicSession | undefined,
 ): Promise<void> {
-  if (name === "play") {
+  if (name === "play" || name === "scsearch") {
     if (session === undefined) {
       return;
     }
-    await executePlay(ctx, session);
+    if (name === "play") {
+      await executePlay(ctx, session);
+      return;
+    }
+    await executeScsearch(ctx, session);
     return;
   }
   const run: SessionCommand | undefined = sessionCommands[name];
@@ -249,7 +255,7 @@ async function runDoorCommand(
   guild: Guild,
   announceChannel: ChatInputCommandInteraction["channel"] | Message["channel"],
 ): Promise<void> {
-  if (name === "play") {
+  if (name === "play" || name === "scsearch") {
     const session: GuildMusicSession = getOrCreateGuildSession(guild);
     bindAnnounceFromChannel(session, announceChannel);
     await dispatchCommand(name, ctx, session);
@@ -293,7 +299,7 @@ function createSlashContext(
 }
 
 function readSlashArgs(interaction: ChatInputCommandInteraction): string {
-  if (interaction.commandName === "play") {
+  if (interaction.commandName === "play" || interaction.commandName === "scsearch") {
     return interaction.options.getString("query") ?? "";
   }
   if (interaction.commandName === "remove") {

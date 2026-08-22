@@ -5,29 +5,28 @@ import type { CommandContext } from "../command-context.ts";
 import { formatDuration } from "../format-duration.ts";
 import type { GuildMusicSession } from "../guild-music-session.ts";
 
-const USAGE_REPLY =
-  "Usage: /play <YouTube or SoundCloud URL or YouTube search words>";
+const USAGE_REPLY = "Usage: /scsearch <SoundCloud search words>";
 const NOT_IN_VOICE_REPLY = "Join a voice channel first.";
-const RESOLVE_FAILED_REPLY = "Couldn't play that YouTube video.";
+const RESOLVE_FAILED_REPLY = "Couldn't play that SoundCloud track.";
 
-/** Slash command payload for `/play`. `query` is optional so a bare `/play` hits usage. */
-export const playSlashData = new SlashCommandBuilder()
-  .setName("play")
-  .setDescription("Play a YouTube or SoundCloud URL, or YouTube search words.")
+/** Slash command payload for `/scsearch`. `query` is optional so a bare `/scsearch` hits usage. */
+export const scsearchSlashData = new SlashCommandBuilder()
+  .setName("scsearch")
+  .setDescription("Search SoundCloud and play the top hit.")
   .addStringOption((option) =>
     option
       .setName("query")
-      .setDescription("YouTube or SoundCloud URL, or YouTube search words.")
+      .setDescription("SoundCloud search words.")
       .setRequired(false),
   );
 
 /**
- * Runs play against a guild session. Transport-agnostic: no Interaction or Message.
+ * Runs scsearch against a guild session. Transport-agnostic: no Interaction or Message.
  * @param ctx - Thin command input from either door.
- * @param session - Guild playback session from Task 2.
+ * @param session - Guild playback session.
  * @returns Resolves after a reply is sent.
  */
-export async function executePlay(
+export async function executeScsearch(
   ctx: CommandContext,
   session: GuildMusicSession,
 ): Promise<void> {
@@ -88,7 +87,10 @@ async function resolveOrReplyAsync(
   session: GuildMusicSession,
 ): Promise<Track | null> {
   try {
-    return await session.engine.resolveTrack({ query: ctx.args });
+    return await session.engine.resolveTrack({
+      query: ctx.args,
+      source: "soundcloud",
+    });
   } catch (error) {
     if (error instanceof TrackResolveError) {
       await ctx.reply(error.message);
