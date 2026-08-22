@@ -117,30 +117,10 @@ export async function openTrackAudioWithClient(
 }
 
 /**
- * Resolves a YouTube URL or search into one track.
- * @param input - Query to resolve.
- * @returns One track.
+ * Returns the shared default YouTube client.
+ * @returns Injectable wrapper around InnerTube.
  */
-export async function resolveTrack(input: {
-  readonly query: string;
-}): Promise<Track> {
-  const client: YoutubeClient = await getDefaultClientAsync();
-  return resolveTrackWithClient(input, client);
-}
-
-/**
- * Opens audio for one resolved track.
- * @param input - Track to open.
- * @returns Stream and format.
- */
-export async function openTrackAudio(input: {
-  readonly track: Track;
-}): Promise<TrackAudio> {
-  const client: YoutubeClient = await getDefaultClientAsync();
-  return openTrackAudioWithClient(input, client);
-}
-
-async function getDefaultClientAsync(): Promise<YoutubeClient> {
+export async function getDefaultYoutubeClientAsync(): Promise<YoutubeClient> {
   defaultClientPromise ??= Innertube.create().then(wrapInnertube);
   return defaultClientPromise;
 }
