@@ -9,7 +9,10 @@ import { formatDuration } from "./format-duration.ts";
 
 /** Engine resolve and open functions. Matches `@yambot/audio-engine` signatures. */
 export interface EnginePort {
-  resolveTrack(input: { readonly query: string }): Promise<Track>;
+  resolveTrack(input: {
+    readonly query: string;
+    readonly source?: "soundcloud";
+  }): Promise<Track>;
   openTrackAudio(input: { readonly track: Track }): Promise<TrackAudio>;
 }
 
