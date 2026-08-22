@@ -65,3 +65,20 @@ This grill is the first source cut, not “finish every source.”
 - Copy `packages/bot/src/commands/play.ts` into `scsearch.ts`. Structure
   check grows `scsearch.ts` the week it ships. Architecture slice 3 In
   updated in the same turn.
+
+### 3. `resolveTrack` takes an optional `source` hint
+
+- Public call becomes `resolveTrack({ query, source?: "soundcloud" })`.
+  Omit `source` on `/play`: URL host dispatch (YouTube or SoundCloud);
+  bare words stay YouTube search.
+- `/scsearch` passes `source: "soundcloud"`: words search SoundCloud;
+  a SoundCloud track URL still resolves; a YouTube URL fails; nothing
+  queued on error.
+- `openTrackAudio` stays `{ track }`. The track `uri` already names the
+  site. No `scsearch:` stuffing in `query`. No second public
+  `resolveSoundCloudTrack`.
+- Bot still does not extract or map formats. The hint is which module
+  owns search, not a per-source player in the bot.
+- `EnginePort.resolveTrack` in `packages/bot/src/guild-music-session.ts`
+  grows the same optional field. Architecture slice 3 In notes the
+  seam in the same turn.
