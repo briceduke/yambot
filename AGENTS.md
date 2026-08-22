@@ -126,3 +126,14 @@ First supervised build of each pattern to copy. Prefer a vertical slice (one thi
 
 **Dispatch hygiene:** give a cloud agent exactly what a doer gets: work item + notes, precedent paths, verify commands, out-of-scope list, Lessons tags/digest (not the full lessons file), and branch connection strings via environment config. Task N card only — not the whole plan.
 <!-- factory:end -->
+
+## Cursor Cloud specific instructions
+
+Toolchain: bun and Node 24 live in the environment snapshot. If `node` reports v22 or `bun` is not found, run `export PATH="$HOME/.nvm/versions/node/v24.19.0/bin:$HOME/.bun/bin:$PATH"`.
+
+You cannot prove YouTube playback or voice from a Cloud Agent:
+
+- YouTube blocks its API from Cloud Agent IPs with an anti-bot wall (`LOGIN_REQUIRED: "Sign in to confirm you're not a bot"`) for every InnerTube client. `resolveTrack` and `openTrackAudio` reach YouTube and parse responses, but no track resolves to playable audio. This is external, not a code defect. Do not treat it as a bug or try to fix it in the engine.
+- The human smoke (play in the test guild, hear audio, skip works) needs a real `DISCORD_TOKEN`, a live guild, and a person in a voice channel. The maintainer runs it; a Cloud Agent cannot.
+
+What a Cloud Agent can prove: `bun install`, `bun run typecheck`, `bun test`, `bun run checks`, and bot startup (missing `DISCORD_TOKEN` exits 1 with the documented message; a dummy token boots the process and fails at Discord login with `TokenInvalid`).
