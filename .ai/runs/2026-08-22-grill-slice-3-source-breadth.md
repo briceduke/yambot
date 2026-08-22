@@ -12,9 +12,10 @@ This grill is the first source cut, not “finish every source.”
 - Copy the YouTube source module: one file per site under
   `packages/audio-engine/src/sources/` (`youtube.ts` is the first example).
   No plugin registry (architecture red team).
-- Bot play path stays the same at the seam: `/play` still calls
-  `resolveTrack` / `openTrackAudio`. The engine routes. No per-source logic
-  in the bot.
+- `/play` still calls `resolveTrack` / `openTrackAudio`. The engine
+  routes URLs by host. The bot does not extract or map formats. A
+  SoundCloud search command is a new command module (decision 2), not
+  extractor logic in the bot.
 - Playlists, radio, and live streams stay slice 4. DJ / operator config
   stay slice 5.
 - R1–R4, two app packages, in-memory session, hybrid slash+prefix, zero
@@ -41,3 +42,26 @@ This grill is the first source cut, not “finish every source.”
   source module.
 - Architecture slice 3 In/Out and product non-goals updated in the same
   turn.
+
+### 2. Add `scsearch` this slice (both doors); `/play` search stays YouTube
+
+- **In (both doors):** `scsearch <words>` — SoundCloud search, play or
+  queue the **top hit**. No picker (same as slice 1 YouTube search).
+  Slash name is `/scsearch`. Prefix is `!scsearch`. No extra alias.
+- Same session rules as `play`: invoker must be in voice; one session
+  per guild; occupied-channel reply; join on first play; queue if
+  something is current; pause stays paused. Anyone may invoke until
+  slice 5.
+- Empty args → `Usage: /scsearch <SoundCloud search words>`.
+- A SoundCloud **track URL** on `scsearch` still resolves (the module
+  already handles that URL). A YouTube URL on `scsearch` → resolve
+  error, nothing queued. SoundCloud sets/playlists still slice 4.
+- **`/play`:** SoundCloud track URLs work (host dispatch). Bare search
+  words stay YouTube. No `scsearch:` prefix stuffed into `/play`.
+  Usage/description mention YouTube or SoundCloud URL, or YouTube
+  search words.
+- **Out:** `scsearch:` lavaplayer identifier on `/play`; search picker;
+  playlist-file `scsearch:` lines (slice 4).
+- Copy `packages/bot/src/commands/play.ts` into `scsearch.ts`. Structure
+  check grows `scsearch.ts` the week it ships. Architecture slice 3 In
+  updated in the same turn.
