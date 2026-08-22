@@ -65,7 +65,7 @@ Ordered high-level cuts. Each slice ships an end-to-end user outcome. Do not sta
 
 **Outcome:** lavaplayer-class sources beyond YouTube, added as thin end-to-end cuts (one source or small group at a time: SoundCloud, Bandcamp, Vimeo, Twitch, local, HTTP, …).
 
-**In (first cut):** SoundCloud track URLs through existing `/play`, plus `scsearch` on both doors (top hit, no picker). Engine source module + dispatcher; bot does not extract or map formats. (Grill 2026-08-22: `.ai/runs/2026-08-22-grill-slice-3-source-breadth.md`.)
+**In (first cut):** SoundCloud track URLs through existing `/play`, plus `scsearch` on both doors (top hit, no picker). `resolveTrack({ query, source?: "soundcloud" })`; omit `source` on `/play`. Engine source module + dispatcher; bot does not extract or map formats. (Grill 2026-08-22: `.ai/runs/2026-08-22-grill-slice-3-source-breadth.md`.)
 
 **Out (first cut):** Bandcamp, Vimeo, Twitch, local, HTTP. Spotify is not a source (cannot stream; no YouTube-guess). SoundCloud sets/playlists wait for slice 4. Do not ship a group of sources before SoundCloud plays in Discord.
 
