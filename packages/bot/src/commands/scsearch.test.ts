@@ -3,17 +3,17 @@ import { TrackResolveError, type Track } from "@yambot/audio-engine";
 
 import type { CommandContext } from "../command-context.ts";
 import type { EnginePort, GuildMusicSession } from "../guild-music-session.ts";
-import { executePlay } from "./play.ts";
+import { executeScsearch } from "./scsearch.ts";
 
-describe("executePlay", () => {
+describe("executeScsearch", () => {
   test("replies usage and does not join when args are empty", async () => {
     const session = new FakeSession();
     const ctx = createContext({ args: "", invokerVoiceChannelId: "voice-1" });
 
-    await executePlay(ctx, session.asGuildSession());
+    await executeScsearch(ctx, session.asGuildSession());
 
     expect(ctx.replies).toEqual([
-      "Usage: /play <YouTube or SoundCloud URL or YouTube search words>",
+      "Usage: /scsearch <SoundCloud search words>",
     ]);
     expect(session.joinChannelIds).toEqual([]);
   });
@@ -21,11 +21,11 @@ describe("executePlay", () => {
   test("replies to join voice first and does not join when invoker is not in voice", async () => {
     const session = new FakeSession();
     const ctx = createContext({
-      args: "never gonna give you up",
+      args: "lofi beats",
       invokerVoiceChannelId: null,
     });
 
-    await executePlay(ctx, session.asGuildSession());
+    await executeScsearch(ctx, session.asGuildSession());
 
     expect(ctx.replies).toEqual(["Join a voice channel first."]);
     expect(session.joinChannelIds).toEqual([]);
@@ -36,11 +36,11 @@ describe("executePlay", () => {
     session.occupied = true;
     session.voiceChannelName = "music";
     const ctx = createContext({
-      args: "never gonna give you up",
+      args: "lofi beats",
       invokerVoiceChannelId: "voice-b",
     });
 
-    await executePlay(ctx, session.asGuildSession());
+    await executeScsearch(ctx, session.asGuildSession());
 
     expect(ctx.replies).toEqual([
       "Already playing in #music — join there.",
@@ -51,73 +51,71 @@ describe("executePlay", () => {
   test("replies the resolve error and does not queue", async () => {
     const session = new FakeSession();
     session.resolveError = new TrackResolveError(
-      "That video has no playable audio.",
+      "No SoundCloud results for that search.",
     );
     const ctx = createContext({
-      args: "https://www.youtube.com/watch?v=missing",
+      args: "zzzz-no-results",
       invokerVoiceChannelId: "voice-1",
     });
 
-    await executePlay(ctx, session.asGuildSession());
+    await executeScsearch(ctx, session.asGuildSession());
 
-    expect(ctx.replies).toEqual(["That video has no playable audio."]);
+    expect(ctx.replies).toEqual(["No SoundCloud results for that search."]);
     expect(session.joinChannelIds).toEqual(["voice-1"]);
+    expect(session.queued).toEqual([]);
+    expect(session.played).toEqual([]);
+  });
+
+  test("replies that a YouTube URL is not a SoundCloud track", async () => {
+    const session = new FakeSession();
+    session.resolveError = new TrackResolveError(
+      "That is not a SoundCloud track.",
+    );
+    const ctx = createContext({
+      args: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      invokerVoiceChannelId: "voice-1",
+    });
+
+    await executeScsearch(ctx, session.asGuildSession());
+
+    expect(ctx.replies).toEqual(["That is not a SoundCloud track."]);
     expect(session.queued).toEqual([]);
     expect(session.played).toEqual([]);
   });
 
   test("replies Playing when idle", async () => {
     const session = new FakeSession();
-    const track = sampleTrack("Never Gonna Give You Up", 213);
+    const track = sampleTrack("Lo-Fi Study", 180);
     session.resolvedTrack = track;
     const ctx = createContext({
-      args: "never gonna give you up",
+      args: "lofi beats",
       invokerVoiceChannelId: "voice-1",
     });
 
-    await executePlay(ctx, session.asGuildSession());
+    await executeScsearch(ctx, session.asGuildSession());
 
-    expect(ctx.replies).toEqual(["Playing: Never Gonna Give You Up (3:33)"]);
+    expect(ctx.replies).toEqual(["Playing: Lo-Fi Study (3:00)"]);
     expect(session.played).toEqual([track]);
     expect(session.queued).toEqual([]);
     expect(session.resolveInputs).toEqual([
-      { query: "never gonna give you up" },
+      { query: "lofi beats", source: "soundcloud" },
     ]);
-  });
-
-  test("replies the ffmpeg-miss message when playNow throws it", async () => {
-    const session = new FakeSession();
-    session.resolvedTrack = sampleTrack("Lo-Fi Study", 180);
-    session.playNowError = new Error(
-      "Couldn't play that SoundCloud track: ffmpeg is not installed.",
-    );
-    const ctx = createContext({
-      args: "https://soundcloud.com/artist/track",
-      invokerVoiceChannelId: "voice-1",
-    });
-
-    await executePlay(ctx, session.asGuildSession());
-
-    expect(ctx.replies).toEqual([
-      "Couldn't play that SoundCloud track: ffmpeg is not installed.",
-    ]);
-    expect(session.played).toEqual([]);
   });
 
   test("replies Queued (#2) when a track is already current", async () => {
     const session = new FakeSession();
     session.currentTrack = sampleTrack("current", 100);
     session.enqueuePosition = 2;
-    const queued = sampleTrack("Next Song", 61);
+    const queued = sampleTrack("Next Beat", 61);
     session.resolvedTrack = queued;
     const ctx = createContext({
-      args: "next song",
+      args: "next beat",
       invokerVoiceChannelId: "voice-1",
     });
 
-    await executePlay(ctx, session.asGuildSession());
+    await executeScsearch(ctx, session.asGuildSession());
 
-    expect(ctx.replies).toEqual(["Queued (#2): Next Song (1:01)"]);
+    expect(ctx.replies).toEqual(["Queued (#2): Next Beat (1:01)"]);
     expect(session.queued).toEqual([queued]);
     expect(session.played).toEqual([]);
   });
@@ -127,20 +125,39 @@ describe("executePlay", () => {
     session.currentTrack = sampleTrack("current", 100);
     session.paused = true;
     session.enqueuePosition = 2;
-    const queued = sampleTrack("Next Song", 61);
+    const queued = sampleTrack("Next Beat", 61);
     session.resolvedTrack = queued;
     const ctx = createContext({
-      args: "next song",
+      args: "next beat",
       invokerVoiceChannelId: "voice-1",
     });
 
-    await executePlay(ctx, session.asGuildSession());
+    await executeScsearch(ctx, session.asGuildSession());
 
-    expect(ctx.replies).toEqual(["Queued (#2): Next Song (1:01)"]);
+    expect(ctx.replies).toEqual(["Queued (#2): Next Beat (1:01)"]);
     expect(session.queued).toEqual([queued]);
     expect(session.played).toEqual([]);
     expect(session.unpauseCalls).toBe(0);
     expect(session.isPaused()).toBe(true);
+  });
+
+  test("replies the ffmpeg-miss message when playNow throws it", async () => {
+    const session = new FakeSession();
+    session.resolvedTrack = sampleTrack("Lo-Fi Study", 180);
+    session.playNowError = new Error(
+      "Couldn't play that SoundCloud track: ffmpeg is not installed.",
+    );
+    const ctx = createContext({
+      args: "lofi beats",
+      invokerVoiceChannelId: "voice-1",
+    });
+
+    await executeScsearch(ctx, session.asGuildSession());
+
+    expect(ctx.replies).toEqual([
+      "Couldn't play that SoundCloud track: ffmpeg is not installed.",
+    ]);
+    expect(session.played).toEqual([]);
   });
 });
 
@@ -174,7 +191,7 @@ class FakeSession {
   voiceChannelName = "music";
   occupied = false;
   enqueuePosition = 2;
-  resolvedTrack: Track = sampleTrack("Song", 213);
+  resolvedTrack: Track = sampleTrack("Song", 180);
   resolveError: Error | null = null;
   playNowError: Error | null = null;
   readonly resolveInputs: {
@@ -193,7 +210,7 @@ class FakeSession {
       return this.resolvedTrack;
     },
     openTrackAudio: async (): Promise<never> => {
-      throw new Error("openTrackAudio is not used by play tests");
+      throw new Error("openTrackAudio is not used by scsearch tests");
     },
   };
 
@@ -243,7 +260,7 @@ function createContext(input: {
 function sampleTrack(title: string, durationSeconds: number): Track {
   return {
     title,
-    uri: `https://www.youtube.com/watch?v=${title}`,
+    uri: `https://soundcloud.com/artist/${title}`,
     durationSeconds,
   };
 }

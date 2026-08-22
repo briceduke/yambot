@@ -34,6 +34,37 @@ describe("dispatchCommand", () => {
     expect(prefixCtx.replies).toEqual(["Join a voice channel first."]);
   });
 
+  test("slash-like and prefix-like scsearch both run executeScsearch", async () => {
+    const slashCtx = createContext({
+      args: "lofi beats",
+      invokerVoiceChannelId: null,
+    });
+    await dispatchCommand(
+      "scsearch",
+      slashCtx,
+      new FakePlaySession().asGuildSession(),
+    );
+    expect(slashCtx.replies).toEqual(["Join a voice channel first."]);
+
+    const parsed = readPrefixDoorCommand({
+      content: "!scsearch lofi beats",
+      prefix: "!",
+      isBot: false,
+      inGuild: true,
+    });
+    expect(parsed).toEqual({ name: "scsearch", args: "lofi beats" });
+    const prefixCtx = createContext({
+      args: parsed?.args ?? "",
+      invokerVoiceChannelId: null,
+    });
+    await dispatchCommand(
+      parsed?.name ?? "",
+      prefixCtx,
+      new FakePlaySession().asGuildSession(),
+    );
+    expect(prefixCtx.replies).toEqual(["Join a voice channel first."]);
+  });
+
   test("slash-like and prefix-like skip both run executeSkip", async () => {
     const slashCtx = createContext({ args: "", invokerVoiceChannelId: null });
     await dispatchCommand("skip", slashCtx, undefined);
@@ -155,6 +186,17 @@ describe("readPrefixDoorCommand", () => {
     ).toEqual({ name: "play", args: "never gonna" });
   });
 
+  test("parses !scsearch words", () => {
+    expect(
+      readPrefixDoorCommand({
+        content: "!scsearch lofi beats",
+        prefix: "!",
+        isBot: false,
+        inGuild: true,
+      }),
+    ).toEqual({ name: "scsearch", args: "lofi beats" });
+  });
+
   test("accepts the seven new canonical prefix names", () => {
     const names: readonly string[] = [
       "pause",
@@ -179,9 +221,10 @@ describe("readPrefixDoorCommand", () => {
 });
 
 describe("registeredSlashNames", () => {
-  test("exported registration names are the ten canonical slash names", () => {
+  test("exported registration names are the eleven canonical slash names", () => {
     expect(registeredSlashNames).toEqual([
       "play",
+      "scsearch",
       "skip",
       "queue",
       "pause",
@@ -192,6 +235,8 @@ describe("registeredSlashNames", () => {
       "clear",
       "stop",
     ]);
+    expect(registeredSlashNames).not.toContain("np");
+    expect(registeredSlashNames).not.toContain("leave");
   });
 });
 

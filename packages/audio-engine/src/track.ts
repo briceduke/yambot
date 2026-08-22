@@ -1,5 +1,5 @@
 /** Closed set of audio formats the engine can yield. Grows only when a real source needs a new member. */
-export const audioFormats = ["webm/opus"] as const;
+export const audioFormats = ["webm/opus", "hls/aac"] as const;
 export type AudioFormat = (typeof audioFormats)[number];
 
 /** One playable item resolved from a source. */
