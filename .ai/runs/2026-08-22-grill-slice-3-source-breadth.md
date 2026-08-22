@@ -100,3 +100,20 @@ This grill is the first source cut, not “finish every source.”
 - Do not transcode in `packages/audio-engine`. Do not switch YouTube
   to PCM.
 - Architecture slice 3 In updated in the same turn.
+
+### 5. SoundCloud extractor: `soundcloud.ts` (new production dependency — approved)
+
+- `packages/audio-engine` adds `soundcloud.ts` (api-v2 wrapper; v0.7.4
+  as of 2026-03; MIT). No operator SoundCloud API key. The library can
+  find a client id itself. Do not add `SOUNDCLOUD_CLIENT_ID` env this
+  slice.
+- Copy the YouTube client seam: wrap behind an injectable client;
+  tests never hit the network. Public engine surface stays
+  `resolveTrack` / `openTrackAudio`.
+- Hedge: if `soundcloud.ts` goes flaky, swap this source module, not
+  the bot (same as `youtubei.js`).
+- Rejected: `soundcloud-api-ts` (official OAuth — extra keys, and the
+  client’s own rules forbid stream capture / alternative streaming).
+  Rejected: `yt-dlp`. Rejected: a hand-rolled api-v2 scraper.
+  Rejected: any extractor that depends on `ffmpeg-static`.
+- Architecture slice 3 In updated in the same turn.
