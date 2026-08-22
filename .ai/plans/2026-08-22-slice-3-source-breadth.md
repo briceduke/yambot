@@ -22,8 +22,8 @@ Worker digest (do not read `.ai/lessons.md`):
 - [x] Task 2: Map `hls/aac` to PATH ffmpeg
 - [x] Task 3: Add the public resolve router
 - [x] Task 4: Add scsearch and wire play / doors
-- [ ] Task 5: Grow the structure check and README
-- [ ] Task 6: Final scoped proof
+- [x] Task 5: Grow the structure check and README
+- [x] Task 6: Final scoped proof
 
 ## Parallel groups
 
