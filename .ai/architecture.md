@@ -65,7 +65,7 @@ Ordered high-level cuts. Each slice ships an end-to-end user outcome. Do not sta
 
 **Outcome:** lavaplayer-class sources beyond YouTube, added as thin end-to-end cuts (one source or small group at a time: SoundCloud, Bandcamp, Vimeo, Twitch, local, HTTP, …).
 
-**In (first cut):** SoundCloud track URLs through existing `/play`, plus `scsearch` on both doors (top hit, no picker). `resolveTrack({ query, source?: "soundcloud" })`; omit `source` on `/play`. Engine source module + dispatcher; bot does not extract or map formats. (Grill 2026-08-22: `.ai/runs/2026-08-22-grill-slice-3-source-breadth.md`.)
+**In (first cut):** SoundCloud track URLs through existing `/play`, plus `scsearch` on both doors (top hit, no picker). `resolveTrack({ query, source?: "soundcloud" })`; omit `source` on `/play`. Format list grows `"hls/aac"`; bot maps that to PATH ffmpeg; YouTube stays `webm/opus`. Engine does not decode. (Grill 2026-08-22: `.ai/runs/2026-08-22-grill-slice-3-source-breadth.md`.)
 
 **Out (first cut):** Bandcamp, Vimeo, Twitch, local, HTTP. Spotify is not a source (cannot stream; no YouTube-guess). SoundCloud sets/playlists wait for slice 4. Do not ship a group of sources before SoundCloud plays in Discord.
 
@@ -141,6 +141,7 @@ Do not invent more packages until a later slice proves the two-package shape is 
 | Engine owns Discord voice | Cut (locked). Bot owns voice. |
 | Plugin registry for every source before a second source ships | Cut. Plain source modules per slice 3. |
 | Spotify as a source, or Spotify URL → YouTube guess | Cut. Spotify ToS blocks streaming; JMusicBot refuses it. An error reply later is fine. |
+| ffmpeg in the engine, or ffmpeg-static this slice | Cut. PATH ffmpeg in the bot for `"hls/aac"` only. YouTube stays zero-transcode. |
 | DB on day one for “eventual” DJ settings | Cut. Persist when slice 5 (or config need) forces it. |
 | Shared platform layer between bot and engine | Cut. One dependency arrow. |
 | Perry-only MVP | Cut. Slice 1 on Bun; Perry in slice 6 after spike. |
