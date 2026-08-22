@@ -18,7 +18,7 @@ Worker digest (do not read `.ai/lessons.md`):
 
 ## Progress
 
-- [ ] Task 1: Add the SoundCloud source module
+- [x] Task 1: Add the SoundCloud source module
 - [ ] Task 2: Map `hls/aac` to PATH ffmpeg
 - [ ] Task 3: Add the public resolve router
 - [ ] Task 4: Add scsearch and wire play / doors

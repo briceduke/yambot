@@ -19,9 +19,37 @@ import type { VoicePort } from "./guild-music-session.ts";
 
 const JOIN_READY_TIMEOUT_MS = 20_000;
 
+const FFMPEG_MISS =
+  "Couldn't play that SoundCloud track: ffmpeg is not installed.";
+
 const playbackInputByFormat: { readonly [K in AudioFormat]: StreamType } = {
   "webm/opus": StreamType.WebmOpus,
+  "hls/aac": StreamType.Arbitrary,
 };
+
+/**
+ * Maps an engine audio format to the Discord voice input type.
+ * @param format - Engine audio format.
+ * @returns Discord stream type for that format.
+ */
+export function streamTypeFor(format: AudioFormat): StreamType {
+  return playbackInputByFormat[format];
+}
+
+/**
+ * Maps an HLS play spawn error to the user-safe ffmpeg-miss message.
+ * @param error - Error from createAudioResource or player.play.
+ * @returns Pinned ffmpeg-miss error, or the original error.
+ */
+export function mapHlsPlayError(error: unknown): Error {
+  if (isMissingFfmpegError(error)) {
+    return new Error(FFMPEG_MISS);
+  }
+  if (error instanceof Error) {
+    return error;
+  }
+  return new Error(String(error));
+}
 
 /**
  * Builds a Discord-backed voice port for one guild.
@@ -88,15 +116,23 @@ class DiscordVoicePort implements VoicePort {
   }
 
   /**
-   * Plays engine audio as WebM/Opus. No ffmpeg and no inline volume.
+   * Plays engine audio. YouTube webm/opus needs no ffmpeg. SoundCloud
+   * hls/aac uses PATH ffmpeg via StreamType.Arbitrary.
    * @param audio - Stream and format from the engine.
    */
   async play(audio: TrackAudio): Promise<void> {
-    const inputType: StreamType = playbackInputByFormat[audio.format];
-    const resource = createAudioResource(Readable.fromWeb(audio.stream), {
-      inputType,
-    });
-    this.#player.play(resource);
+    const inputType: StreamType = streamTypeFor(audio.format);
+    try {
+      const resource = createAudioResource(Readable.fromWeb(audio.stream), {
+        inputType,
+      });
+      this.#player.play(resource);
+    } catch (error) {
+      if (audio.format === "hls/aac") {
+        throw mapHlsPlayError(error);
+      }
+      throw error instanceof Error ? error : new Error(String(error));
+    }
   }
 
   stop(): void {
@@ -206,6 +242,21 @@ function isConnectionGone(status: VoiceConnectionStatus): boolean {
     status === VoiceConnectionStatus.Disconnected ||
     status === VoiceConnectionStatus.Destroyed
   );
+}
+
+function isMissingFfmpegError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message: string = error.message.toLowerCase();
+  const mentionsBinary: boolean =
+    message.includes("ffmpeg") || message.includes("avconv");
+  const code: string =
+    "code" in error && typeof error.code === "string" ? error.code : "";
+  if (code === "ENOENT" && mentionsBinary) {
+    return true;
+  }
+  return mentionsBinary;
 }
 
 function joinFailureMessage(error: unknown): string {
