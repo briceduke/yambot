@@ -22,8 +22,8 @@ This grill is the first source cut, not “finish every source.”
   Java. No new packages (AGENTS ask-first).
 - `parseYoutubeQuery` today treats a non-YouTube URL as a YouTube search.
   A second source must intercept its hosts before that fallback.
-- Closed format list is still `webm/opus` until a real source cannot yield
-  it. Slice 1 already allowed ffmpeg / a new format member at that moment.
+- Closed format list starts as `webm/opus`. Decision 4 grows it for
+  SoundCloud. Slice 1 already allowed ffmpeg at that moment.
 - Transition-honesty heuristic: N/A — nothing persisted. Sessions stay
   in memory.
 
@@ -82,3 +82,21 @@ This grill is the first source cut, not “finish every source.”
 - `EnginePort.resolveTrack` in `packages/bot/src/guild-music-session.ts`
   grows the same optional field. Architecture slice 3 In notes the
   seam in the same turn.
+
+### 4. SoundCloud uses PATH ffmpeg in the bot; YouTube stays zero-transcode
+
+- Grow `audioFormats` by one member: `"hls/aac"`. Engine still yields
+  `{ stream, format }` and does not decode. Exact bytes (HLS playlist
+  vs AAC payload) get pinned in the spec once the extractor is chosen.
+- Bot lookup in `packages/bot/src/discord-voice.ts` grows one arm:
+  `"hls/aac"` → `@discordjs/voice` ffmpeg path (`StreamType.Arbitrary`).
+  `"webm/opus"` stays `StreamType.WebmOpus`. No inline volume.
+- ffmpeg is a **PATH binary**. Document it next to the other operator
+  install steps. Do not add `ffmpeg-static`, an opus encoder, or a
+  sodium package.
+- Missing ffmpeg must not block YouTube or bot startup. Opening a
+  SoundCloud track without ffmpeg → user-safe error reply, nothing
+  queued (or skip if already current), same class as a dead track.
+- Do not transcode in `packages/audio-engine`. Do not switch YouTube
+  to PCM.
+- Architecture slice 3 In updated in the same turn.
