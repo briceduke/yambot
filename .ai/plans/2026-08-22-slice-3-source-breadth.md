@@ -18,12 +18,12 @@ Worker digest (do not read `.ai/lessons.md`):
 
 ## Progress
 
-- [ ] Task 1: Add the SoundCloud source module
-- [ ] Task 2: Map `hls/aac` to PATH ffmpeg
-- [ ] Task 3: Add the public resolve router
-- [ ] Task 4: Add scsearch and wire play / doors
-- [ ] Task 5: Grow the structure check and README
-- [ ] Task 6: Final scoped proof
+- [x] Task 1: Add the SoundCloud source module
+- [x] Task 2: Map `hls/aac` to PATH ffmpeg
+- [x] Task 3: Add the public resolve router
+- [x] Task 4: Add scsearch and wire play / doors
+- [x] Task 5: Grow the structure check and README
+- [x] Task 6: Final scoped proof
 
 ## Parallel groups
 

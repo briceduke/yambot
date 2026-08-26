@@ -3,6 +3,7 @@ import { nowplayingSlashData } from "./commands/nowplaying.ts";
 import { pauseSlashData } from "./commands/pause.ts";
 import { playSlashData } from "./commands/play.ts";
 import { queueSlashData } from "./commands/queue.ts";
+import { scsearchSlashData } from "./commands/scsearch.ts";
 import { removeSlashData } from "./commands/remove.ts";
 import { resumeSlashData } from "./commands/resume.ts";
 import { shuffleSlashData } from "./commands/shuffle.ts";
@@ -10,6 +11,7 @@ import { skipSlashData } from "./commands/skip.ts";
 import { stopSlashData } from "./commands/stop.ts";
 
 export const playSlashBody = playSlashData.toJSON();
+export const scsearchSlashBody = scsearchSlashData.toJSON();
 export const skipSlashBody = skipSlashData.toJSON();
 export const queueSlashBody = queueSlashData.toJSON();
 export const pauseSlashBody = pauseSlashData.toJSON();
@@ -22,6 +24,7 @@ export const stopSlashBody = stopSlashData.toJSON();
 
 const guildSlashBodies = [
   playSlashBody,
+  scsearchSlashBody,
   skipSlashBody,
   queueSlashBody,
   pauseSlashBody,
@@ -48,7 +51,7 @@ export interface RegisterGuildCommandsInput {
 }
 
 /**
- * Bulk-PUTs the ten guild slash commands. Same-name PUT is idempotent.
+ * Bulk-PUTs the eleven guild slash commands. Same-name PUT is idempotent.
  * @param input - Application id, guild id, and injected REST PUT.
  */
 export async function registerGuildCommands(
