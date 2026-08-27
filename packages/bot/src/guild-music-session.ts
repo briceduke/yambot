@@ -1,6 +1,7 @@
 import {
   TrackQueue,
   TrackResolveError,
+  type ResolveResult,
   type Track,
   type TrackAudio,
 } from "@yambot/audio-engine";
@@ -12,7 +13,7 @@ export interface EnginePort {
   resolveTrack(input: {
     readonly query: string;
     readonly source?: "soundcloud";
-  }): Promise<Track>;
+  }): Promise<ResolveResult>;
   openTrackAudio(input: { readonly track: Track }): Promise<TrackAudio>;
 }
 
