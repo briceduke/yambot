@@ -17,9 +17,9 @@ Worker digest (do not read `.ai/lessons.md`):
 
 ## Progress
 
-- [ ] Task 1: Add operator-config env, overlay, and DJ check
-- [ ] Task 2: Parse mention-as-prefix
-- [ ] Task 3: Add LeavePolicy and alone-timer on the session
+- [x] Task 1: Add operator-config env, overlay, and DJ check
+- [x] Task 2: Parse mention-as-prefix
+- [x] Task 3: Add LeavePolicy and alone-timer on the session
 - [ ] Task 4: Add help, settings, setdj, prefix, settc, setvc commands
 - [ ] Task 5: Wire door gates, aliases, voice-state, and slash registration
 - [ ] Task 6: Grow structure check, README, env example, First examples
