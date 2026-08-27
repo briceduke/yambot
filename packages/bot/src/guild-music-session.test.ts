@@ -15,6 +15,7 @@ import {
   getSession,
   IDLE_LEAVE_AFTER_MS,
   type EnginePort,
+  type LeavePolicy,
   type VoicePort,
 } from "./guild-music-session.ts";
 
@@ -379,6 +380,192 @@ describe("GuildMusicSession", () => {
     expect(session.hasVoiceConnection()).toBe(false);
     expect(voice.destroyed).toBe(false);
   });
+
+  test("stayInChannel skips idle leave after the last track", async () => {
+    const clock = new FakeIdleLeaveClock();
+    const voice = new FakeVoice();
+    const session = createSession({
+      guildId: "guild-stay-in-channel",
+      engine: createEngine(),
+      voice,
+      leavePolicy: createLeavePolicy({ stayInChannel: true }),
+      scheduleIdleLeave: (callback, delayMs) =>
+        clock.schedule(callback, delayMs),
+    });
+
+    await session.joinInvoker("channel-a");
+    await session.playNow(sampleTrack("one"));
+    session.skipCurrent();
+
+    expect(getSession("guild-stay-in-channel")).toBe(session);
+    expect(session.currentTrack).toBeNull();
+    expect(session.hasVoiceConnection()).toBe(true);
+    expect(clock.isScheduled).toBe(false);
+
+    clock.fire();
+    expect(getSession("guild-stay-in-channel")).toBe(session);
+    expect(voice.destroyed).toBe(false);
+  });
+
+  test("custom idleLeaveMs is the delay that fires idle leave", async () => {
+    const clock = new FakeIdleLeaveClock();
+    const voice = new FakeVoice();
+    const customIdleMs: number = 45_000;
+    const session = createSession({
+      guildId: "guild-custom-idle",
+      engine: createEngine(),
+      voice,
+      leavePolicy: createLeavePolicy({ idleLeaveMs: customIdleMs }),
+      scheduleIdleLeave: (callback, delayMs) =>
+        clock.schedule(callback, delayMs),
+    });
+
+    await session.joinInvoker("channel-a");
+    await session.playNow(sampleTrack("one"));
+    session.skipCurrent();
+
+    expect(clock.scheduledDelayMs).toBe(customIdleMs);
+    expect(clock.scheduledDelayMs).not.toBe(IDLE_LEAVE_AFTER_MS);
+
+    clock.fire();
+    expect(getSession("guild-custom-idle")).toBeUndefined();
+    expect(voice.destroyed).toBe(true);
+  });
+
+  test("aloneTimeUntilStopMs 0 never arms the alone timer", async () => {
+    const idleClock = new FakeIdleLeaveClock();
+    const aloneClock = new FakeIdleLeaveClock();
+    const voice = new FakeVoice();
+    const session = createSession({
+      guildId: "guild-alone-off",
+      engine: createEngine(),
+      voice,
+      leavePolicy: createLeavePolicy({ aloneTimeUntilStopMs: 0 }),
+      scheduleIdleLeave: (callback, delayMs) =>
+        idleClock.schedule(callback, delayMs),
+      scheduleAloneLeave: (callback, delayMs) =>
+        aloneClock.schedule(callback, delayMs),
+    });
+
+    await session.joinInvoker("channel-a");
+    session.noteHumanListenerCount(0);
+
+    expect(aloneClock.isScheduled).toBe(false);
+    expect(getSession("guild-alone-off")).toBe(session);
+
+    aloneClock.fire();
+    expect(getSession("guild-alone-off")).toBe(session);
+    expect(voice.destroyed).toBe(false);
+  });
+
+  test("alone timer arms on count 0 and fire drops with no extra message", async () => {
+    const idleClock = new FakeIdleLeaveClock();
+    const aloneClock = new FakeIdleLeaveClock();
+    const voice = new FakeVoice();
+    const announces: string[] = [];
+    const aloneMs: number = 15_000;
+    const session = createSession({
+      guildId: "guild-alone-arm",
+      engine: createEngine(),
+      voice,
+      leavePolicy: createLeavePolicy({ aloneTimeUntilStopMs: aloneMs }),
+      scheduleIdleLeave: (callback, delayMs) =>
+        idleClock.schedule(callback, delayMs),
+      scheduleAloneLeave: (callback, delayMs) =>
+        aloneClock.schedule(callback, delayMs),
+    });
+    session.bindAnnounce(async (text) => {
+      announces.push(text);
+    });
+
+    await session.joinInvoker("channel-a");
+    await session.playNow(sampleTrack("one"));
+    session.noteHumanListenerCount(0);
+
+    expect(getSession("guild-alone-arm")).toBe(session);
+    expect(aloneClock.isScheduled).toBe(true);
+    expect(aloneClock.scheduledDelayMs).toBe(aloneMs);
+    expect(idleClock.isScheduled).toBe(false);
+
+    aloneClock.fire();
+    expect(getSession("guild-alone-arm")).toBeUndefined();
+    expect(voice.destroyed).toBe(true);
+    expect(announces).toEqual([]);
+  });
+
+  test("alone timer cancel on count greater than 0 so fire is a no-op", async () => {
+    const aloneClock = new FakeIdleLeaveClock();
+    const voice = new FakeVoice();
+    const session = createSession({
+      guildId: "guild-alone-cancel-humans",
+      engine: createEngine(),
+      voice,
+      leavePolicy: createLeavePolicy({ aloneTimeUntilStopMs: 15_000 }),
+      scheduleAloneLeave: (callback, delayMs) =>
+        aloneClock.schedule(callback, delayMs),
+    });
+
+    await session.joinInvoker("channel-a");
+    session.noteHumanListenerCount(0);
+    expect(aloneClock.isScheduled).toBe(true);
+
+    session.noteHumanListenerCount(1);
+    expect(aloneClock.isScheduled).toBe(false);
+
+    aloneClock.fire();
+    expect(getSession("guild-alone-cancel-humans")).toBe(session);
+    expect(voice.destroyed).toBe(false);
+  });
+
+  test("leaveNow cancels the alone timer so fire is a no-op", async () => {
+    const aloneClock = new FakeIdleLeaveClock();
+    const voice = new FakeVoice();
+    const session = createSession({
+      guildId: "guild-leave-cancels-alone",
+      engine: createEngine(),
+      voice,
+      leavePolicy: createLeavePolicy({ aloneTimeUntilStopMs: 15_000 }),
+      scheduleAloneLeave: (callback, delayMs) =>
+        aloneClock.schedule(callback, delayMs),
+    });
+
+    await session.joinInvoker("channel-a");
+    session.noteHumanListenerCount(0);
+    expect(aloneClock.isScheduled).toBe(true);
+
+    session.leaveNow();
+    expect(getSession("guild-leave-cancels-alone")).toBeUndefined();
+    expect(aloneClock.isScheduled).toBe(false);
+    expect(voice.destroyed).toBe(true);
+
+    aloneClock.fire();
+    expect(voice.destroyed).toBe(true);
+  });
+
+  test("voice drop cancels the alone timer so fire is a no-op", async () => {
+    const aloneClock = new FakeIdleLeaveClock();
+    const voice = new FakeVoice();
+    const session = createSession({
+      guildId: "guild-voice-drop-cancels-alone",
+      engine: createEngine(),
+      voice,
+      leavePolicy: createLeavePolicy({ aloneTimeUntilStopMs: 15_000 }),
+      scheduleAloneLeave: (callback, delayMs) =>
+        aloneClock.schedule(callback, delayMs),
+    });
+
+    await session.joinInvoker("channel-a");
+    session.noteHumanListenerCount(0);
+    expect(aloneClock.isScheduled).toBe(true);
+
+    voice.emitDisconnected();
+    expect(getSession("guild-voice-drop-cancels-alone")).toBe(session);
+    expect(aloneClock.isScheduled).toBe(false);
+
+    aloneClock.fire();
+    expect(getSession("guild-voice-drop-cancels-alone")).toBe(session);
+    expect(voice.destroyed).toBe(false);
+  });
 });
 
 class FakeVoice implements VoicePort {
@@ -513,6 +700,18 @@ function createEngine(
       }
       return { stream, format: "webm/opus" };
     },
+  };
+}
+
+function createLeavePolicy(overrides: {
+  readonly idleLeaveMs?: number;
+  readonly stayInChannel?: boolean;
+  readonly aloneTimeUntilStopMs?: number;
+}): LeavePolicy {
+  return {
+    idleLeaveMs: overrides.idleLeaveMs ?? IDLE_LEAVE_AFTER_MS,
+    stayInChannel: overrides.stayInChannel ?? false,
+    aloneTimeUntilStopMs: overrides.aloneTimeUntilStopMs ?? 0,
   };
 }
 

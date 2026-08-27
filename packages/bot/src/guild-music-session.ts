@@ -48,11 +48,26 @@ export interface ScheduleIdleLeave {
   (callback: () => void, delayMs: number): () => void;
 }
 
+/** Operator leave timings for one guild session. */
+export interface LeavePolicy {
+  /** Wait after the queue empties before leaving, in milliseconds. */
+  readonly idleLeaveMs: number;
+  /** When true, do not leave after the queue empties. */
+  readonly stayInChannel: boolean;
+  /**
+   * Wait after the last human leaves voice before dropping the session,
+   * in milliseconds. `0` means the alone timer never arms.
+   */
+  readonly aloneTimeUntilStopMs: number;
+}
+
 export interface CreateSessionInput {
   readonly guildId: string;
   readonly engine: EnginePort;
   readonly voice: VoicePort;
+  readonly leavePolicy?: LeavePolicy;
   readonly scheduleIdleLeave?: ScheduleIdleLeave;
+  readonly scheduleAloneLeave?: ScheduleIdleLeave;
 }
 
 export interface SessionSnapshot {
@@ -62,6 +77,12 @@ export interface SessionSnapshot {
 
 /** Idle-leave wait after the queue empties while still in voice, in milliseconds. */
 export const IDLE_LEAVE_AFTER_MS: number = 300_000;
+
+const DEFAULT_LEAVE_POLICY: LeavePolicy = {
+  idleLeaveMs: IDLE_LEAVE_AFTER_MS,
+  stayInChannel: false,
+  aloneTimeUntilStopMs: 0,
+};
 
 const sessions: Map<string, GuildMusicSession> = new Map();
 
@@ -76,7 +97,7 @@ export function getSession(guildId: string): GuildMusicSession | undefined {
 
 /**
  * Creates and registers one guild music session.
- * @param input - Guild id, engine port, voice port, and optional idle-leave scheduler.
+ * @param input - Guild id, engine port, voice port, leave policy, and optional schedulers.
  * @returns The new session.
  */
 export function createSession(input: CreateSessionInput): GuildMusicSession {
@@ -86,8 +107,8 @@ export function createSession(input: CreateSessionInput): GuildMusicSession {
 }
 
 /**
- * Cancels idle leave, removes the guild session, then stops and destroys voice.
- * Idempotent when the session is already gone.
+ * Cancels idle and alone leave, removes the guild session, then stops and
+ * destroys voice. Idempotent when the session is already gone.
  * @param guildId - Discord guild id.
  */
 export function dropSession(guildId: string): void {
@@ -106,18 +127,24 @@ export class GuildMusicSession {
   readonly #guildId: string;
   readonly #voice: VoicePort;
   readonly #queue: TrackQueue = new TrackQueue();
+  readonly #leavePolicy: LeavePolicy;
   readonly #scheduleIdleLeave: ScheduleIdleLeave;
+  readonly #scheduleAloneLeave: ScheduleIdleLeave;
   #currentTrack: Track | null = null;
   #announce: ((text: string) => Promise<void>) | undefined;
   #ignoreIdle = false;
   #cancelIdleLeave: (() => void) | undefined;
+  #cancelAloneLeave: (() => void) | undefined;
 
   constructor(input: CreateSessionInput) {
     this.engine = input.engine;
     this.#guildId = input.guildId;
     this.#voice = input.voice;
+    this.#leavePolicy = input.leavePolicy ?? DEFAULT_LEAVE_POLICY;
     this.#scheduleIdleLeave =
       input.scheduleIdleLeave ?? defaultScheduleIdleLeave;
+    this.#scheduleAloneLeave =
+      input.scheduleAloneLeave ?? defaultScheduleIdleLeave;
     this.#voice.onIdle(() => {
       void this.#advanceOnIdleAsync();
     });
@@ -263,6 +290,14 @@ export class GuildMusicSession {
   }
 
   /**
+   * Voice channel id the bot is connected to, or `null` when not in voice.
+   * @returns Channel snowflake, or `null`.
+   */
+  get voiceChannelId(): string | null {
+    return this.#voice.getChannelId();
+  }
+
+  /**
    * Removes one upcoming track by 0-based index.
    * @param index - Position in the upcoming list.
    * @returns The removed track, or `null` if the index is out of range.
@@ -296,14 +331,36 @@ export class GuildMusicSession {
   }
 
   /**
-   * Cancels idle leave, deletes this session from the map, then stops and
-   * destroys voice. Used by `dropSession`.
+   * Cancels idle and alone leave, deletes this session from the map, then
+   * stops and destroys voice. Used by `dropSession`.
    */
   leaveNow(): void {
-    this.#cancelScheduledIdleLeave();
+    this.#cancelScheduledLeaves();
     sessions.delete(this.#guildId);
     this.#voice.stop();
     this.#voice.destroy();
+  }
+
+  /**
+   * Arms or cancels the alone-in-voice timer from a human listener count.
+   * When `aloneTimeUntilStopMs` is `0`, this is a no-op. A count greater
+   * than 0 cancels the timer. A count of 0 with a live voice connection
+   * schedules `dropSession` after `aloneTimeUntilStopMs`. Firing sends
+   * no extra message.
+   * @param count - Non-bot members in the session voice channel.
+   */
+  noteHumanListenerCount(count: number): void {
+    if (this.#leavePolicy.aloneTimeUntilStopMs === 0) {
+      return;
+    }
+    if (count > 0) {
+      this.#cancelScheduledAloneLeave();
+      return;
+    }
+    if (!this.hasVoiceConnection()) {
+      return;
+    }
+    this.#armAloneLeave();
   }
 
   #shouldStayInCurrentChannel(channelId: string): boolean {
@@ -318,7 +375,7 @@ export class GuildMusicSession {
     if (getSession(this.#guildId) === undefined) {
       return;
     }
-    this.#cancelScheduledIdleLeave();
+    this.#cancelScheduledLeaves();
     this.#ignoreIdle = true;
     this.#voice.stop();
     this.#currentTrack = null;
@@ -372,9 +429,24 @@ export class GuildMusicSession {
 
   #armIdleLeave(): void {
     this.#cancelScheduledIdleLeave();
+    if (this.#leavePolicy.stayInChannel) {
+      return;
+    }
     this.#cancelIdleLeave = this.#scheduleIdleLeave(() => {
       dropSession(this.#guildId);
-    }, IDLE_LEAVE_AFTER_MS);
+    }, this.#leavePolicy.idleLeaveMs);
+  }
+
+  #armAloneLeave(): void {
+    this.#cancelScheduledAloneLeave();
+    this.#cancelAloneLeave = this.#scheduleAloneLeave(() => {
+      dropSession(this.#guildId);
+    }, this.#leavePolicy.aloneTimeUntilStopMs);
+  }
+
+  #cancelScheduledLeaves(): void {
+    this.#cancelScheduledIdleLeave();
+    this.#cancelScheduledAloneLeave();
   }
 
   #cancelScheduledIdleLeave(): void {
@@ -383,6 +455,14 @@ export class GuildMusicSession {
     }
     this.#cancelIdleLeave();
     this.#cancelIdleLeave = undefined;
+  }
+
+  #cancelScheduledAloneLeave(): void {
+    if (this.#cancelAloneLeave === undefined) {
+      return;
+    }
+    this.#cancelAloneLeave();
+    this.#cancelAloneLeave = undefined;
   }
 }
 
