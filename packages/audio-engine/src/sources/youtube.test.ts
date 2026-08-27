@@ -31,6 +31,9 @@ function createClient(overrides: Partial<YoutubeClient> = {}): YoutubeClient {
         hasWebmOpus: true,
       };
     },
+    async getPlaylist() {
+      return { title: "unused", videos: [] };
+    },
     async searchFirstVideoId() {
       return VIDEO_ID;
     },
@@ -71,21 +74,51 @@ describe("parseYoutubeQuery", () => {
       query: "never gonna give you up",
     });
   });
+
+  test("classifies a playlist URL as a playlist id", () => {
+    expect(
+      parseYoutubeQuery("https://www.youtube.com/playlist?list=PLtest"),
+    ).toEqual({
+      kind: "playlist-id",
+      playlistId: "PLtest",
+    });
+  });
+
+  test("keeps a watch URL with list as a video id", () => {
+    expect(
+      parseYoutubeQuery(`${WATCH_URL}&list=PLtest`),
+    ).toEqual({
+      kind: "video-id",
+      videoId: VIDEO_ID,
+    });
+  });
+
+  test("rejects a playlist path with no list", () => {
+    expect(() =>
+      parseYoutubeQuery("https://www.youtube.com/playlist"),
+    ).toThrow(TrackResolveError);
+  });
 });
 
 describe("resolveTrackWithClient", () => {
   test("resolves a watch URL through getVideo", async () => {
     const client = createClient();
-    const track = await resolveTrackWithClient({ query: WATCH_URL }, client);
-    expect(track).toEqual({
-      title: "Never Gonna Give You Up",
-      uri: WATCH_URL,
-      durationSeconds: 213,
+    const result = await resolveTrackWithClient({ query: WATCH_URL }, client);
+    expect(result).toEqual({
+      tracks: [
+        {
+          title: "Never Gonna Give You Up",
+          uri: WATCH_URL,
+          durationSeconds: 213,
+        },
+      ],
+      playlistTitle: null,
+      truncated: false,
     });
   });
 
   test("plays the top search hit", async () => {
-    const track = await resolveTrackWithClient(
+    const result = await resolveTrackWithClient(
       { query: "never gonna give you up" },
       createClient({
         async searchFirstVideoId(query) {
@@ -94,8 +127,9 @@ describe("resolveTrackWithClient", () => {
         },
       }),
     );
-    expect(track.uri).toBe(WATCH_URL);
-    expect(track.title).toBe("Never Gonna Give You Up");
+    expect(result.tracks[0]?.uri).toBe(WATCH_URL);
+    expect(result.tracks[0]?.title).toBe("Never Gonna Give You Up");
+    expect(result.playlistTitle).toBeNull();
   });
 
   test("rejects a video with no webm/opus", async () => {
@@ -146,6 +180,91 @@ describe("resolveTrackWithClient", () => {
     expect((error as TrackResolveError).message).toBe(
       "Couldn't play that YouTube video.",
     );
+  });
+
+  test("expands a playlist URL into tracks", async () => {
+    const result = await resolveTrackWithClient(
+      { query: "https://www.youtube.com/playlist?list=PLtest" },
+      createClient({
+        async getPlaylist(playlistId) {
+          expect(playlistId).toBe("PLtest");
+          return {
+            title: "Summer Mix",
+            videos: [
+              {
+                videoId: "aaaaaaaaaaa",
+                title: "One",
+                durationSeconds: 10,
+                isPlayable: true,
+              },
+              {
+                videoId: "bbbbbbbbbbb",
+                title: "Two",
+                durationSeconds: 20,
+                isPlayable: true,
+              },
+              {
+                videoId: "ccccccccccc",
+                title: "Skip",
+                durationSeconds: 30,
+                isPlayable: false,
+              },
+            ],
+          };
+        },
+      }),
+    );
+    expect(result).toEqual({
+      playlistTitle: "Summer Mix",
+      truncated: false,
+      tracks: [
+        {
+          title: "One",
+          uri: "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+          durationSeconds: 10,
+        },
+        {
+          title: "Two",
+          uri: "https://www.youtube.com/watch?v=bbbbbbbbbbb",
+          durationSeconds: 20,
+        },
+      ],
+    });
+  });
+
+  test("rejects an empty playlist", async () => {
+    const error = await resolveTrackWithClient(
+      { query: "https://www.youtube.com/playlist?list=PLempty" },
+      createClient({
+        async getPlaylist() {
+          return { title: "Empty", videos: [] };
+        },
+      }),
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(TrackResolveError);
+    expect((error as TrackResolveError).message).toBe(
+      "That playlist has no playable tracks.",
+    );
+  });
+
+  test("caps a playlist at 1000 and marks truncated", async () => {
+    const videos = Array.from({ length: 1001 }, (_, index) => ({
+      videoId: `id${index.toString().padStart(8, "0")}`,
+      title: `Track ${index}`,
+      durationSeconds: 1,
+      isPlayable: true,
+    }));
+    const result = await resolveTrackWithClient(
+      { query: "https://www.youtube.com/playlist?list=PLlong" },
+      createClient({
+        async getPlaylist() {
+          return { title: "Long", videos };
+        },
+      }),
+    );
+    expect(result.tracks).toHaveLength(1000);
+    expect(result.truncated).toBe(true);
+    expect(result.playlistTitle).toBe("Long");
   });
 });
 
