@@ -66,6 +66,23 @@ describe("executePlay", () => {
     expect(session.played).toEqual([]);
   });
 
+  test("replies the playlist-empty resolve error", async () => {
+    const session = new FakeSession();
+    session.resolveError = new TrackResolveError(
+      "That playlist has no playable tracks.",
+    );
+    const ctx = createContext({
+      args: "https://www.youtube.com/playlist?list=PL8oEkrReXiOLp1N9czSJ6XAu1CvyZWgMB",
+      invokerVoiceChannelId: "voice-1",
+    });
+
+    await executePlay(ctx, session.asGuildSession());
+
+    expect(ctx.replies).toEqual(["That playlist has no playable tracks."]);
+    expect(session.queued).toEqual([]);
+    expect(session.played).toEqual([]);
+  });
+
   test("replies Playing when idle", async () => {
     const session = new FakeSession();
     const track = sampleTrack("Never Gonna Give You Up", 213);
@@ -149,7 +166,7 @@ describe("executePlay", () => {
     const second = sampleTrack("Two", 20);
     session.resolvedResult = playlistResult("Summer Mix", [first, second]);
     const ctx = createContext({
-      args: "https://www.youtube.com/playlist?list=PLtest",
+      args: "https://www.youtube.com/playlist?list=PL8oEkrReXiOLp1N9czSJ6XAu1CvyZWgMB",
       invokerVoiceChannelId: "voice-1",
     });
 

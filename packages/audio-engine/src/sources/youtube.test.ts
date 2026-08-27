@@ -4,6 +4,7 @@ import { TrackResolveError } from "../track.ts";
 import {
   openTrackAudioWithClient,
   parseYoutubeQuery,
+  playlistVideosFromItems,
   resolveTrackWithClient,
   type YoutubeClient,
 } from "./youtube.ts";
@@ -11,6 +12,9 @@ import {
 const VIDEO_ID = "dQw4w9WgXcQ";
 const WATCH_URL = `https://www.youtube.com/watch?v=${VIDEO_ID}`;
 const SHORT_URL = `https://youtu.be/${VIDEO_ID}`;
+const BRICE_PLAYLIST_ID = "PL8oEkrReXiOLp1N9czSJ6XAu1CvyZWgMB";
+const BRICE_PLAYLIST_URL =
+  `https://www.youtube.com/playlist?list=${BRICE_PLAYLIST_ID}`;
 
 function createFakeStream(): ReadableStream<Uint8Array> {
   return new ReadableStream({
@@ -76,11 +80,9 @@ describe("parseYoutubeQuery", () => {
   });
 
   test("classifies a playlist URL as a playlist id", () => {
-    expect(
-      parseYoutubeQuery("https://www.youtube.com/playlist?list=PLtest"),
-    ).toEqual({
+    expect(parseYoutubeQuery(BRICE_PLAYLIST_URL)).toEqual({
       kind: "playlist-id",
-      playlistId: "PLtest",
+      playlistId: BRICE_PLAYLIST_ID,
     });
   });
 
@@ -182,12 +184,12 @@ describe("resolveTrackWithClient", () => {
     );
   });
 
-  test("expands a playlist URL into tracks", async () => {
+  test("expands a /playlist?list= URL into tracks", async () => {
     const result = await resolveTrackWithClient(
-      { query: "https://www.youtube.com/playlist?list=PLtest" },
+      { query: BRICE_PLAYLIST_URL },
       createClient({
         async getPlaylist(playlistId) {
-          expect(playlistId).toBe("PLtest");
+          expect(playlistId).toBe(BRICE_PLAYLIST_ID);
           return {
             title: "Summer Mix",
             videos: [
@@ -265,6 +267,115 @@ describe("resolveTrackWithClient", () => {
     expect(result.tracks).toHaveLength(1000);
     expect(result.truncated).toBe(true);
     expect(result.playlistTitle).toBe("Long");
+  });
+
+  test("keeps tracks when every item is marked unplayable", async () => {
+    const result = await resolveTrackWithClient(
+      { query: BRICE_PLAYLIST_URL },
+      createClient({
+        async getPlaylist() {
+          return {
+            title: "Flag Lie",
+            videos: [
+              {
+                videoId: "aaaaaaaaaaa",
+                title: "One",
+                durationSeconds: 10,
+                isPlayable: false,
+              },
+            ],
+          };
+        },
+      }),
+    );
+    expect(result.tracks).toHaveLength(1);
+    expect(result.tracks[0]?.title).toBe("One");
+    expect(result.playlistTitle).toBe("Flag Lie");
+  });
+});
+
+describe("playlistVideosFromItems", () => {
+  test("maps PlaylistVideo id and Text title", () => {
+    expect(
+      playlistVideosFromItems([
+        {
+          id: VIDEO_ID,
+          title: { text: "Never Gonna Give You Up" },
+          duration: { seconds: 213 },
+          is_playable: true,
+        },
+      ]),
+    ).toEqual([
+      {
+        videoId: VIDEO_ID,
+        title: "Never Gonna Give You Up",
+        durationSeconds: 213,
+        isPlayable: true,
+      },
+    ]);
+  });
+
+  test("maps video_id when id is missing", () => {
+    expect(
+      playlistVideosFromItems([
+        { video_id: VIDEO_ID, title: "Never Gonna Give You Up" },
+      ]),
+    ).toEqual([
+      {
+        videoId: VIDEO_ID,
+        title: "Never Gonna Give You Up",
+        durationSeconds: 0,
+        isPlayable: true,
+      },
+    ]);
+  });
+
+  test("maps LockupView content_id and metadata title", () => {
+    expect(
+      playlistVideosFromItems([
+        {
+          content_id: VIDEO_ID,
+          metadata: { title: { text: "Never Gonna Give You Up" } },
+        },
+      ]),
+    ).toEqual([
+      {
+        videoId: VIDEO_ID,
+        title: "Never Gonna Give You Up",
+        durationSeconds: 0,
+        isPlayable: true,
+      },
+    ]);
+  });
+
+  test("treats missing is_playable as playable", () => {
+    const mapped = playlistVideosFromItems([
+      {
+        id: VIDEO_ID,
+        title: "Rick",
+        duration: { seconds: 213 },
+        is_playable: undefined,
+      },
+    ]);
+    expect(mapped[0]?.isPlayable).toBe(true);
+  });
+
+  test("throws PLAYLIST_FAILED when items exist but none have a video id", () => {
+    expect(() =>
+      playlistVideosFromItems([{ title: "no id here" }]),
+    ).toThrow(TrackResolveError);
+    try {
+      playlistVideosFromItems([{ title: "no id here" }]);
+    } catch (error) {
+      expect(error).toBeInstanceOf(TrackResolveError);
+      expect((error as TrackResolveError).message).toBe(
+        "Couldn't play that playlist.",
+      );
+    }
+  });
+
+  test("returns an empty list when InnerTube returned no items", () => {
+    expect(playlistVideosFromItems([])).toEqual([]);
   });
 });
 
