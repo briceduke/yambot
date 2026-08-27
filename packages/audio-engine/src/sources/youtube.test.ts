@@ -348,6 +348,65 @@ describe("playlistVideosFromItems", () => {
     ]);
   });
 
+  test("maps LockupView overlay badge clock text to durationSeconds", () => {
+    const mapped = playlistVideosFromItems([
+      {
+        content_id: VIDEO_ID,
+        title: "Never Gonna Give You Up",
+        content_image: {
+          overlays: [
+            { badges: [{ text: "3:45" }] },
+          ],
+        },
+      },
+    ]);
+    expect(mapped[0]?.durationSeconds).toBe(225);
+  });
+
+  test("maps duration.text clock when seconds is missing", () => {
+    const mapped = playlistVideosFromItems([
+      {
+        id: VIDEO_ID,
+        title: "Never Gonna Give You Up",
+        duration: { text: "3:45" },
+      },
+    ]);
+    expect(mapped[0]?.durationSeconds).toBe(225);
+  });
+
+  test("maps length_seconds when duration.seconds is missing", () => {
+    const mapped = playlistVideosFromItems([
+      {
+        id: VIDEO_ID,
+        title: "Never Gonna Give You Up",
+        length_seconds: 213,
+      },
+    ]);
+    expect(mapped[0]?.durationSeconds).toBe(213);
+  });
+
+  test("maps LockupView metadata row clock text to durationSeconds", () => {
+    const mapped = playlistVideosFromItems([
+      {
+        content_id: VIDEO_ID,
+        metadata: {
+          title: { text: "Never Gonna Give You Up" },
+          metadata: {
+            metadata_rows: [
+              {
+                metadata_parts: [
+                  { text: { text: "Rick Astley" } },
+                  { text: { text: "3:45" } },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    ]);
+    expect(mapped[0]?.durationSeconds).toBe(225);
+  });
+
   test("treats missing is_playable as playable", () => {
     const mapped = playlistVideosFromItems([
       {

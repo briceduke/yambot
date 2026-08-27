@@ -292,15 +292,200 @@ function asNonEmptyString(value: unknown): string | undefined {
 }
 
 function readItemDurationSeconds(item: object): number {
-  if (!("duration" in item) || typeof item.duration !== "object") {
+  const record: Record<string, unknown> = item as Record<string, unknown>;
+  const fromNumber: number = readNumericDuration(record);
+  if (fromNumber > 0) {
+    return fromNumber;
+  }
+  const fromText: number = readClockDuration(record);
+  return fromText > 0 ? fromText : fromNumber;
+}
+
+function readNumericDuration(record: Record<string, unknown>): number {
+  const fromDuration: number | null = secondsFromDurationField(record.duration);
+  if (fromDuration !== null && fromDuration > 0) {
+    return fromDuration;
+  }
+  return (
+    finiteSeconds(record.length_seconds) ??
+    finiteSeconds(record.lengthSeconds) ??
+    fromDuration ??
+    0
+  );
+}
+
+function secondsFromDurationField(duration: unknown): number | null {
+  if (typeof duration === "number") {
+    return finiteSeconds(duration);
+  }
+  if (typeof duration !== "object" || duration === null) {
+    return null;
+  }
+  const record: Record<string, unknown> = duration as Record<string, unknown>;
+  return finiteSeconds(record.seconds);
+}
+
+function finiteSeconds(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return Math.floor(value);
+  }
+  if (typeof value === "string" && value !== "") {
+    const parsed: number = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return Math.floor(parsed);
+    }
+  }
+  return null;
+}
+
+function readClockDuration(record: Record<string, unknown>): number {
+  return (
+    clockSecondsFromUnknown(record.duration) ||
+    clockSecondsFromImage(record.content_image) ||
+    clockSecondsFromOverlays(record.thumbnail_overlays) ||
+    clockSecondsFromMetadata(record.metadata)
+  );
+}
+
+function clockSecondsFromUnknown(value: unknown): number {
+  if (typeof value === "string") {
+    return parseClockToSeconds(value) ?? 0;
+  }
+  if (typeof value !== "object" || value === null) {
     return 0;
   }
-  const duration: object | null = item.duration;
-  if (duration === null || !("seconds" in duration)) {
+  const record: Record<string, unknown> = value as Record<string, unknown>;
+  if (typeof record.text === "string") {
+    return parseClockToSeconds(record.text) ?? 0;
+  }
+  return 0;
+}
+
+function clockSecondsFromImage(image: unknown): number {
+  if (typeof image !== "object" || image === null) {
     return 0;
   }
-  const seconds: unknown = duration.seconds;
-  return typeof seconds === "number" && !Number.isNaN(seconds) ? seconds : 0;
+  const record: Record<string, unknown> = image as Record<string, unknown>;
+  const fromOverlays: number = clockSecondsFromOverlays(record.overlays);
+  if (fromOverlays > 0) {
+    return fromOverlays;
+  }
+  return clockSecondsFromImage(record.primary_thumbnail);
+}
+
+function clockSecondsFromOverlays(overlays: unknown): number {
+  if (!Array.isArray(overlays)) {
+    return 0;
+  }
+  for (const overlay of overlays) {
+    const seconds: number = clockSecondsFromOverlay(overlay);
+    if (seconds > 0) {
+      return seconds;
+    }
+  }
+  return 0;
+}
+
+function clockSecondsFromOverlay(overlay: unknown): number {
+  if (typeof overlay !== "object" || overlay === null) {
+    return 0;
+  }
+  const record: Record<string, unknown> = overlay as Record<string, unknown>;
+  const fromText: number = clockSecondsFromUnknown(record.text);
+  if (fromText > 0) {
+    return fromText;
+  }
+  return clockSecondsFromBadges(record.badges);
+}
+
+function clockSecondsFromBadges(badges: unknown): number {
+  if (!Array.isArray(badges)) {
+    return 0;
+  }
+  for (const badge of badges) {
+    if (typeof badge !== "object" || badge === null) {
+      continue;
+    }
+    const record: Record<string, unknown> = badge as Record<string, unknown>;
+    const seconds: number = clockSecondsFromUnknown(record.text);
+    if (seconds > 0) {
+      return seconds;
+    }
+  }
+  return 0;
+}
+
+function clockSecondsFromMetadata(metadata: unknown): number {
+  if (typeof metadata !== "object" || metadata === null) {
+    return 0;
+  }
+  const record: Record<string, unknown> = metadata as Record<string, unknown>;
+  const rows: unknown = record.metadata_rows ?? nestedMetadataRows(record.metadata);
+  if (!Array.isArray(rows)) {
+    return 0;
+  }
+  for (const row of rows) {
+    const seconds: number = clockSecondsFromMetadataRow(row);
+    if (seconds > 0) {
+      return seconds;
+    }
+  }
+  return 0;
+}
+
+function nestedMetadataRows(metadata: unknown): unknown {
+  if (typeof metadata !== "object" || metadata === null) {
+    return undefined;
+  }
+  return (metadata as Record<string, unknown>).metadata_rows;
+}
+
+function clockSecondsFromMetadataRow(row: unknown): number {
+  if (typeof row !== "object" || row === null) {
+    return 0;
+  }
+  const parts: unknown = (row as Record<string, unknown>).metadata_parts;
+  if (!Array.isArray(parts)) {
+    return 0;
+  }
+  for (const part of parts) {
+    if (typeof part !== "object" || part === null) {
+      continue;
+    }
+    const seconds: number = clockSecondsFromUnknown(
+      (part as Record<string, unknown>).text,
+    );
+    if (seconds > 0) {
+      return seconds;
+    }
+  }
+  return 0;
+}
+
+function parseClockToSeconds(text: string): number | null {
+  const trimmed: string = text.trim();
+  if (!/^\d{1,3}:\d{1,2}(?::\d{1,2})?$/.test(trimmed)) {
+    return null;
+  }
+  const parts: readonly number[] = trimmed.split(":").map((part) => Number(part));
+  if (parts.some((part) => !Number.isFinite(part))) {
+    return null;
+  }
+  if (parts.length === 2) {
+    const minutes: number = parts[0] ?? 0;
+    const seconds: number = parts[1] ?? 0;
+    if (seconds > 59) {
+      return null;
+    }
+    return minutes * 60 + seconds;
+  }
+  const hours: number = parts[0] ?? 0;
+  const minutes: number = parts[1] ?? 0;
+  const seconds: number = parts[2] ?? 0;
+  if (minutes > 59 || seconds > 59) {
+    return null;
+  }
+  return hours * 3600 + minutes * 60 + seconds;
 }
 
 function tracksFromPlaylistVideos(
