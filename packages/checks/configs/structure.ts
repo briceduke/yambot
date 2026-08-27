@@ -48,7 +48,12 @@ export const structureConfig: StructureConfig = {
     {
       id: "bot-src",
       match: "packages/bot/src",
-      requiredFiles: ["main.ts", "command-context.ts", "guild-music-session.ts"],
+      requiredFiles: [
+        "main.ts",
+        "command-context.ts",
+        "guild-music-session.ts",
+        "operator-config.ts",
+      ],
     },
     {
       id: "bot-command-module",
@@ -65,6 +70,12 @@ export const structureConfig: StructureConfig = {
         "shuffle.ts",
         "clear.ts",
         "stop.ts",
+        "help.ts",
+        "settings.ts",
+        "setdj.ts",
+        "prefix.ts",
+        "settc.ts",
+        "setvc.ts",
       ],
     },
   ],
