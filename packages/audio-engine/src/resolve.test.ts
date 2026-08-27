@@ -7,12 +7,14 @@ import {
   resolveTrackWithClients,
   type ResolveClients,
 } from "./resolve.ts";
+import type { HttpStreamClient } from "./sources/http.ts";
 import type { SoundCloudClient } from "./sources/soundcloud.ts";
 import type { YoutubeClient } from "./sources/youtube.ts";
 
 const YOUTUBE_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
 const SOUNDCLOUD_URL = "https://soundcloud.com/artist/track";
 const SOUNDCLOUD_PERMALINK = "https://soundcloud.com/artist/canonical-track";
+const MP3_URL = "https://radio.example.com/live.mp3";
 
 function createFakeStream(): ReadableStream<Uint8Array> {
   return new ReadableStream({
@@ -27,6 +29,7 @@ function createClients(
   overrides: {
     readonly youtube?: Partial<YoutubeClient>;
     readonly soundcloud?: Partial<SoundCloudClient>;
+    readonly http?: Partial<HttpStreamClient>;
   } = {},
 ): ResolveClients {
   const youtube: YoutubeClient = {
@@ -70,7 +73,16 @@ function createClients(
     },
     ...overrides.soundcloud,
   };
-  return { youtube, soundcloud };
+  const http: HttpStreamClient = {
+    async probe() {
+      return { isAudio: false, contentType: "text/html", icyName: null };
+    },
+    async openBody() {
+      return createFakeStream();
+    },
+    ...overrides.http,
+  };
+  return { youtube, soundcloud, http };
 }
 
 describe("pickSource", () => {
@@ -104,6 +116,10 @@ describe("pickSource", () => {
         "That is not a SoundCloud track.",
       );
     }
+  });
+
+  test("routes a non-YouTube HTTP URL to http", () => {
+    expect(pickSource({ query: "https://example.com" })).toBe("http");
   });
 });
 
@@ -175,6 +191,27 @@ describe("resolveTrackWithClients", () => {
       "That is not a SoundCloud track.",
     );
   });
+
+  test("falls back to YouTube when HTTP probe is not audio", async () => {
+    const result = await resolveTrackWithClients(
+      { query: "https://example.com" },
+      createClients(),
+    );
+    expect(result.tracks[0]?.uri).toBe(YOUTUBE_URL);
+    expect(result.playlistTitle).toBeNull();
+  });
+
+  test("resolves an mp3 URL as an HTTP stream", async () => {
+    const result = await resolveTrackWithClients(
+      { query: MP3_URL },
+      createClients(),
+    );
+    expect(result.tracks[0]).toEqual({
+      title: "live",
+      uri: MP3_URL,
+      durationSeconds: 0,
+    });
+  });
 });
 
 describe("openTrackAudioWithClients", () => {
@@ -223,12 +260,35 @@ describe("openTrackAudioWithClients", () => {
     expect(audio.stream).toBe(stream);
   });
 
+  test("opens a non-YouTube HTTP uri as http/mpeg", async () => {
+    const stream = createFakeStream();
+    const audio = await openTrackAudioWithClients(
+      {
+        track: {
+          title: "stream",
+          uri: MP3_URL,
+          durationSeconds: 0,
+        },
+      },
+      createClients({
+        http: {
+          async openBody(url) {
+            expect(url).toBe(MP3_URL);
+            return stream;
+          },
+        },
+      }),
+    );
+    expect(audio.format).toBe("http/mpeg");
+    expect(audio.stream).toBe(stream);
+  });
+
   test("rejects an unknown host", async () => {
     const error = await openTrackAudioWithClients(
       {
         track: {
           title: "Nope",
-          uri: "https://example.com/track",
+          uri: "ftp://example.com/track",
           durationSeconds: 10,
         },
       },
