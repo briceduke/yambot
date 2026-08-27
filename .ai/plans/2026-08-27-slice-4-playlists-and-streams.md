@@ -21,8 +21,8 @@ Worker digest (do not read `.ai/lessons.md`):
 - [x] Task 2: Add the HTTP stream source module
 - [x] Task 3: Add Added-N play UX
 - [x] Task 4: Map `http/mpeg` to PATH ffmpeg
-- [ ] Task 5: Grow the structure check and README
-- [ ] Task 6: Final scoped proof
+- [x] Task 5: Grow the structure check and README
+- [x] Task 6: Final scoped proof
 
 ## Parallel groups
 
