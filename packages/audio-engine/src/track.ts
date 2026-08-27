@@ -1,5 +1,5 @@
 /** Closed set of audio formats the engine can yield. Grows only when a real source needs a new member. */
-export const audioFormats = ["webm/opus", "hls/aac"] as const;
+export const audioFormats = ["webm/opus", "hls/aac", "http/mpeg"] as const;
 export type AudioFormat = (typeof audioFormats)[number];
 
 /** Maximum playable tracks kept from one playlist URL. */
