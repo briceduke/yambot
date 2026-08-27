@@ -36,6 +36,9 @@ function createClient(
         hasHlsAudio: true,
       };
     },
+    async getPlaylist() {
+      return { title: "unused", tracks: [] };
+    },
     async searchFirstTrackUrl() {
       return TRACK_URL;
     },
@@ -75,22 +78,17 @@ describe("parseSoundCloudQuery", () => {
     });
   });
 
-  test("rejects a /sets/ playlist URL", () => {
-    expect(() => parseSoundCloudQuery(SET_URL)).toThrow(TrackResolveError);
-    try {
-      parseSoundCloudQuery(SET_URL);
-    } catch (error) {
-      expect(error).toBeInstanceOf(TrackResolveError);
-      expect((error as TrackResolveError).message).toBe(
-        "Playlists are not supported yet. Use a track URL or search words.",
-      );
-    }
+  test("classifies a /sets/ URL as a playlist-url", () => {
+    expect(parseSoundCloudQuery(SET_URL)).toEqual({
+      kind: "playlist-url",
+      url: SET_URL,
+    });
   });
 });
 
 describe("resolveSoundCloudTrackWithClient", () => {
   test("resolves a track URL through getTrack", async () => {
-    const track = await resolveSoundCloudTrackWithClient(
+    const result = await resolveSoundCloudTrackWithClient(
       { query: TRACK_URL },
       createClient({
         async getTrack(url) {
@@ -105,15 +103,21 @@ describe("resolveSoundCloudTrackWithClient", () => {
         },
       }),
     );
-    expect(track).toEqual({
-      title: "Lo-Fi Study",
-      uri: PERMALINK_URL,
-      durationSeconds: 180,
+    expect(result).toEqual({
+      tracks: [
+        {
+          title: "Lo-Fi Study",
+          uri: PERMALINK_URL,
+          durationSeconds: 180,
+        },
+      ],
+      playlistTitle: null,
+      truncated: false,
     });
   });
 
   test("plays the top search hit", async () => {
-    const track = await resolveSoundCloudTrackWithClient(
+    const result = await resolveSoundCloudTrackWithClient(
       { query: "lofi beats" },
       createClient({
         async searchFirstTrackUrl(query) {
@@ -132,8 +136,8 @@ describe("resolveSoundCloudTrackWithClient", () => {
         },
       }),
     );
-    expect(track.uri).toBe(PERMALINK_URL);
-    expect(track.title).toBe("Lo-Fi Study");
+    expect(result.tracks[0]?.uri).toBe(PERMALINK_URL);
+    expect(result.tracks[0]?.title).toBe("Lo-Fi Study");
   });
 
   test("maps no search hit", async () => {
@@ -151,9 +155,59 @@ describe("resolveSoundCloudTrackWithClient", () => {
     );
   });
 
-  test("rejects kind that is not track", async () => {
-    const error = await resolveSoundCloudTrackWithClient(
-      { query: TRACK_URL },
+  test("expands a set URL through getPlaylist", async () => {
+    const result = await resolveSoundCloudTrackWithClient(
+      { query: SET_URL },
+      createClient({
+        async getPlaylist(url) {
+          expect(url).toBe(SET_URL);
+          return {
+            title: "Album",
+            tracks: [
+              {
+                title: "A",
+                permalinkUrl: "https://soundcloud.com/artist/a",
+                durationSeconds: 10,
+                hasHlsAudio: true,
+              },
+              {
+                title: "B",
+                permalinkUrl: "https://soundcloud.com/artist/b",
+                durationSeconds: 20,
+                hasHlsAudio: false,
+              },
+              {
+                title: "C",
+                permalinkUrl: "https://soundcloud.com/artist/c",
+                durationSeconds: 30,
+                hasHlsAudio: true,
+              },
+            ],
+          };
+        },
+      }),
+    );
+    expect(result).toEqual({
+      playlistTitle: "Album",
+      truncated: false,
+      tracks: [
+        {
+          title: "A",
+          uri: "https://soundcloud.com/artist/a",
+          durationSeconds: 10,
+        },
+        {
+          title: "C",
+          uri: "https://soundcloud.com/artist/c",
+          durationSeconds: 30,
+        },
+      ],
+    });
+  });
+
+  test("follows getTrack kind playlist to getPlaylist", async () => {
+    const result = await resolveSoundCloudTrackWithClient(
+      { query: SHORT_URL },
       createClient({
         async getTrack() {
           return {
@@ -164,11 +218,38 @@ describe("resolveSoundCloudTrackWithClient", () => {
             hasHlsAudio: true,
           };
         },
+        async getPlaylist(url) {
+          expect(url).toBe(SET_URL);
+          return {
+            title: "Album",
+            tracks: [
+              {
+                title: "A",
+                permalinkUrl: "https://soundcloud.com/artist/a",
+                durationSeconds: 10,
+                hasHlsAudio: true,
+              },
+            ],
+          };
+        },
+      }),
+    );
+    expect(result.tracks).toHaveLength(1);
+    expect(result.playlistTitle).toBe("Album");
+  });
+
+  test("rejects an empty set", async () => {
+    const error = await resolveSoundCloudTrackWithClient(
+      { query: SET_URL },
+      createClient({
+        async getPlaylist() {
+          return { title: "Empty", tracks: [] };
+        },
       }),
     ).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(TrackResolveError);
     expect((error as TrackResolveError).message).toBe(
-      "Playlists are not supported yet. Use a track URL or search words.",
+      "That playlist has no playable tracks.",
     );
   });
 

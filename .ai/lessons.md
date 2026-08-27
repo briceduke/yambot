@@ -477,3 +477,63 @@ not mark live pause/leave as proved from CI.
 `/execute` serial commit lane and finish report; `/test` unverifiable rows.
 
 **Tags:** process, execute
+
+---
+
+## Context
+
+Slice 4 YouTube playlist expand. youtubei.js v18 `Playlist.items` is
+`LockupView | PlaylistVideo | ReelItem | ShortsLockupView`.
+`PlaylistVideo.id` comes from raw `videoId`. `LockupView` has
+`content_id`, not `id`. `PlaylistVideo.is_playable` is often `undefined`
+because InnerTube omits `isPlayable`.
+
+## Problem
+
+`readPlaylistVideo` required `item.id` and treated `is_playable !== true`
+as skip. Real playlist items then mapped to zero videos, and
+`resolvePlaylistAsync` replied `That playlist has no playable tracks.`
+A public playlist with items is not empty.
+
+## Rule
+
+Read video id from `id`, `video_id`, or `content_id`. Treat missing
+`is_playable` as playable; skip strict `false` only when other tracks
+remain. Items present but none parse → `Couldn't play that playlist.`
+Zero items → `That playlist has no playable tracks.` Fake-client tests
+must use youtubei.js field names, not only the mapped `YoutubeClient`
+shape. Do not mark live InnerTube playlist expand as proved from CI.
+
+## Applies to
+
+`packages/audio-engine` YouTube playlist mapping.
+
+**Tags:** platform
+
+---
+
+## Context
+
+Slice 4 playlist `/queue` durations. youtubei.js v18 `LockupView` has
+no `duration.seconds`. Length is overlay badge text (`3:45`),
+`duration.text`, `length_seconds`, or a ContentMetadataView row.
+
+## Problem
+
+`readItemDurationSeconds` only read `item.duration.seconds`. Mapped
+playlist tracks were duration 0, so `/queue` printed `0:00` for every
+row. Calling `getInfo` per video would be slow and rate-limited.
+
+## Rule
+
+Parse duration from InnerTube playlist item fields already on the page:
+numeric `duration.seconds` / `length_seconds` / `lengthSeconds`, then
+clock text on `duration.text`, thumbnail overlay badges, and metadata
+rows. Missing length may stay 0. Do not N+1 `getInfo` to fill playlist
+durations. One-video resolve still uses `basic_info.duration`.
+
+## Applies to
+
+`packages/audio-engine` YouTube playlist mapping.
+
+**Tags:** platform

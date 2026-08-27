@@ -51,6 +51,19 @@ describe("executeQueue", () => {
     expect(ctx.replies).toEqual(["Now: Current (3:33)\n1. Next (1:01)"]);
   });
 
+  test("formats a playlist-length duration as m:ss", async () => {
+    const session = new FakeSession({
+      current: sampleTrack("Current", 225),
+      upcoming: [sampleTrack("Next", 125)],
+    });
+    const ctx = createContext();
+
+    await executeQueue(ctx, session.asGuildSession());
+
+    expect(ctx.replies).toEqual(["Now: Current (3:45)\n1. Next (2:05)"]);
+    expect(ctx.replies[0]).not.toContain("0:00");
+  });
+
   test("shows 10 upcoming lines plus and 1 more when 11 are queued", async () => {
     const upcoming: Track[] = Array.from({ length: 11 }, (_, index) =>
       sampleTrack(`Song ${index + 1}`, 60),
