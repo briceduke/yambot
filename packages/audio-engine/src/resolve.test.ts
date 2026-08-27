@@ -38,6 +38,9 @@ function createClients(
         hasWebmOpus: true,
       };
     },
+    async getPlaylist() {
+      return { title: "unused", videos: [] };
+    },
     async searchFirstVideoId() {
       return "dQw4w9WgXcQ";
     },
@@ -55,6 +58,9 @@ function createClients(
         kind: "track",
         hasHlsAudio: true,
       };
+    },
+    async getPlaylist() {
+      return { title: "unused", tracks: [] };
     },
     async searchFirstTrackUrl() {
       return SOUNDCLOUD_URL;
@@ -121,9 +127,15 @@ describe("resolveTrackWithClients", () => {
       }),
     );
     expect(track).toEqual({
-      title: "Lo-Fi Study",
-      uri: SOUNDCLOUD_PERMALINK,
-      durationSeconds: 180,
+      tracks: [
+        {
+          title: "Lo-Fi Study",
+          uri: SOUNDCLOUD_PERMALINK,
+          durationSeconds: 180,
+        },
+      ],
+      playlistTitle: null,
+      truncated: false,
     });
   });
 
@@ -133,9 +145,15 @@ describe("resolveTrackWithClients", () => {
       createClients(),
     );
     expect(track).toEqual({
-      title: "Never Gonna Give You Up",
-      uri: YOUTUBE_URL,
-      durationSeconds: 213,
+      tracks: [
+        {
+          title: "Never Gonna Give You Up",
+          uri: YOUTUBE_URL,
+          durationSeconds: 213,
+        },
+      ],
+      playlistTitle: null,
+      truncated: false,
     });
   });
 
@@ -144,7 +162,7 @@ describe("resolveTrackWithClients", () => {
       { query: "never gonna give you up" },
       createClients(),
     );
-    expect(track.uri).toBe(YOUTUBE_URL);
+    expect(track.tracks[0]?.uri).toBe(YOUTUBE_URL);
   });
 
   test("rejects a YouTube URL when source is soundcloud", async () => {

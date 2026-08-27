@@ -1,4 +1,4 @@
-import { TrackResolveError, type Track, type TrackAudio } from "./track.ts";
+import { TrackResolveError, type ResolveResult, type Track, type TrackAudio } from "./track.ts";
 import {
   getDefaultSoundCloudClient,
   openSoundCloudAudioWithClient,
@@ -50,12 +50,12 @@ export function pickSource(
  * Resolves a query with injected YouTube and SoundCloud clients.
  * @param input - Query and optional SoundCloud hint.
  * @param clients - Testable source clients.
- * @returns One track.
+ * @returns One track or a playlist of tracks.
  */
 export async function resolveTrackWithClients(
   input: ResolveTrackInput,
   clients: ResolveClients,
-): Promise<Track> {
+): Promise<ResolveResult> {
   const source: "youtube" | "soundcloud" = pickSource(input);
   if (source === "soundcloud") {
     return resolveSoundCloudTrackWithClient(
@@ -86,11 +86,11 @@ export async function openTrackAudioWithClients(
 /**
  * Resolves a URL or search into one track.
  * @param input - Query and optional SoundCloud hint.
- * @returns One track.
+ * @returns One track or a playlist of tracks.
  */
 export async function resolveTrack(
   input: ResolveTrackInput,
-): Promise<Track> {
+): Promise<ResolveResult> {
   return resolveTrackWithClients(input, {
     youtube: await getDefaultYoutubeClientAsync(),
     soundcloud: getDefaultSoundCloudClient(),

@@ -1,10 +1,18 @@
 import { Innertube } from "youtubei.js";
 
-import { TrackResolveError, type Track, type TrackAudio } from "../track.ts";
+import {
+  MAX_PLAYLIST_TRACKS,
+  oneTrackResult,
+  playlistResult,
+  TrackResolveError,
+  type ResolveResult,
+  type Track,
+  type TrackAudio,
+} from "../track.ts";
 
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
-const PLAYLIST_UNSUPPORTED =
-  "Playlists are not supported yet. Use a video URL or search words.";
+const PLAYLIST_EMPTY = "That playlist has no playable tracks.";
+const PLAYLIST_FAILED = "Couldn't play that playlist.";
 const NO_SEARCH_HIT = "No YouTube results for that search.";
 const NO_PLAYABLE_AUDIO = "That video has no playable audio.";
 const PLAY_FAILED = "Couldn't play that YouTube video.";
@@ -23,9 +31,21 @@ export interface YoutubeVideoIdQuery {
   readonly videoId: string;
 }
 
+export interface YoutubePlaylistIdQuery {
+  readonly kind: "playlist-id";
+  readonly playlistId: string;
+}
+
 export interface YoutubeSearchQuery {
   readonly kind: "search";
   readonly query: string;
+}
+
+export interface YoutubePlaylistVideo {
+  readonly videoId: string;
+  readonly title: string;
+  readonly durationSeconds: number;
+  readonly isPlayable: boolean;
 }
 
 export interface YoutubeClient {
@@ -36,6 +56,10 @@ export interface YoutubeClient {
     readonly durationSeconds: number;
     readonly videoId: string;
     readonly hasWebmOpus: boolean;
+  }>;
+  getPlaylist(playlistId: string): Promise<{
+    readonly title: string;
+    readonly videos: readonly YoutubePlaylistVideo[];
   }>;
   searchFirstVideoId(query: string): Promise<string | null>;
   openAudioWebm(videoId: string): Promise<ReadableStream<Uint8Array>>;
@@ -50,7 +74,7 @@ let defaultClientPromise: Promise<YoutubeClient> | undefined;
  */
 export function parseYoutubeQuery(
   query: string,
-): YoutubeVideoIdQuery | YoutubeSearchQuery {
+): YoutubeVideoIdQuery | YoutubePlaylistIdQuery | YoutubeSearchQuery {
   const trimmed: string = query.trim();
   if (!URL.canParse(trimmed)) {
     return { kind: "search", query: trimmed };
@@ -63,8 +87,12 @@ export function parseYoutubeQuery(
   if (videoId !== null) {
     return { kind: "video-id", videoId };
   }
-  if (isPlaylistUrl(url)) {
-    throw new TrackResolveError(PLAYLIST_UNSUPPORTED);
+  const playlistId: string | null = url.searchParams.get("list");
+  if (playlistId !== null && playlistId !== "") {
+    return { kind: "playlist-id", playlistId };
+  }
+  if (pathSegments(url)[0] === "playlist") {
+    throw new TrackResolveError(PLAYLIST_EMPTY);
   }
   return { kind: "search", query: trimmed };
 }
@@ -73,23 +101,26 @@ export function parseYoutubeQuery(
  * Resolves a query to one playable track using a YouTube client seam.
  * @param input - Query to resolve.
  * @param client - Testable InnerTube wrapper.
- * @returns One track.
+ * @returns One track or a playlist of tracks.
  */
 export async function resolveTrackWithClient(
   input: { readonly query: string },
   client: YoutubeClient,
-): Promise<Track> {
+): Promise<ResolveResult> {
   const parsed = parseYoutubeQuery(input.query);
+  if (parsed.kind === "playlist-id") {
+    return resolvePlaylistAsync(parsed.playlistId, client);
+  }
   const videoId: string = await resolveVideoIdAsync(parsed, client);
   const video = await fetchVideoAsync(client, videoId);
   if (!video.hasWebmOpus) {
     throw new TrackResolveError(NO_PLAYABLE_AUDIO);
   }
-  return {
+  return oneTrackResult({
     title: video.title,
     uri: canonicalWatchUri(video.videoId),
     durationSeconds: video.durationSeconds,
-  };
+  });
 }
 
 /**
@@ -128,9 +159,133 @@ export async function getDefaultYoutubeClientAsync(): Promise<YoutubeClient> {
 function wrapInnertube(innertube: Innertube): YoutubeClient {
   return {
     getVideo: (videoId) => getVideoFromInnertubeAsync(innertube, videoId),
+    getPlaylist: (playlistId) =>
+      getPlaylistFromInnertubeAsync(innertube, playlistId),
     searchFirstVideoId: (query) => searchFirstVideoIdAsync(innertube, query),
     openAudioWebm: (videoId) => openAudioWebmAsync(innertube, videoId),
   };
+}
+
+async function getPlaylistFromInnertubeAsync(
+  innertube: Innertube,
+  playlistId: string,
+): Promise<{
+  readonly title: string;
+  readonly videos: readonly YoutubePlaylistVideo[];
+}> {
+  try {
+    return await collectPlaylistVideosAsync(innertube, playlistId);
+  } catch (error) {
+    throw toPlaylistError(error);
+  }
+}
+
+async function collectPlaylistVideosAsync(
+  innertube: Innertube,
+  playlistId: string,
+): Promise<{
+  readonly title: string;
+  readonly videos: readonly YoutubePlaylistVideo[];
+}> {
+  let page = await innertube.getPlaylist(playlistId);
+  const title: string = page.info.title ?? "";
+  const videos: YoutubePlaylistVideo[] = [];
+  while (true) {
+    appendPlaylistVideos(videos, page.items);
+    if (countPlayable(videos) > MAX_PLAYLIST_TRACKS || !page.has_continuation) {
+      break;
+    }
+    page = await page.getContinuation();
+  }
+  return { title, videos };
+}
+
+function appendPlaylistVideos(
+  videos: YoutubePlaylistVideo[],
+  items: readonly unknown[],
+): void {
+  for (const item of items) {
+    const video: YoutubePlaylistVideo | null = readPlaylistVideo(item);
+    if (video !== null) {
+      videos.push(video);
+    }
+  }
+}
+
+function countPlayable(videos: readonly YoutubePlaylistVideo[]): number {
+  return videos.filter((video) => video.isPlayable).length;
+}
+
+function readPlaylistVideo(item: unknown): YoutubePlaylistVideo | null {
+  if (typeof item !== "object" || item === null || !("id" in item)) {
+    return null;
+  }
+  const videoId: unknown = item.id;
+  if (typeof videoId !== "string" || videoId === "") {
+    return null;
+  }
+  return {
+    videoId,
+    title: readItemTitle(item),
+    durationSeconds: readItemDurationSeconds(item),
+    isPlayable: !("is_playable" in item) || item.is_playable === true,
+  };
+}
+
+function readItemTitle(item: object): string {
+  if (!("title" in item)) {
+    return "";
+  }
+  const title: unknown = item.title;
+  if (typeof title === "string") {
+    return title;
+  }
+  if (typeof title === "object" && title !== null && "text" in title) {
+    const text: unknown = title.text;
+    return typeof text === "string" ? text : "";
+  }
+  return "";
+}
+
+function readItemDurationSeconds(item: object): number {
+  if (!("duration" in item) || typeof item.duration !== "object") {
+    return 0;
+  }
+  const duration: object | null = item.duration;
+  if (duration === null || !("seconds" in duration)) {
+    return 0;
+  }
+  const seconds: unknown = duration.seconds;
+  return typeof seconds === "number" && !Number.isNaN(seconds) ? seconds : 0;
+}
+
+function toPlaylistError(error: unknown): TrackResolveError {
+  if (error instanceof TrackResolveError) {
+    return error;
+  }
+  return new TrackResolveError(PLAYLIST_FAILED);
+}
+
+async function resolvePlaylistAsync(
+  playlistId: string,
+  client: YoutubeClient,
+): Promise<ResolveResult> {
+  try {
+    const playlist = await client.getPlaylist(playlistId);
+    const tracks: Track[] = playlist.videos
+      .filter((video) => video.isPlayable && video.videoId !== "")
+      .map((video) => ({
+        title: video.title,
+        uri: canonicalWatchUri(video.videoId),
+        durationSeconds: video.durationSeconds,
+      }));
+    if (tracks.length === 0) {
+      throw new TrackResolveError(PLAYLIST_EMPTY);
+    }
+    return playlistResult(playlist.title, tracks);
+  } catch (error) {
+    throw toPlaylistError(error);
+  }
 }
 
 async function getVideoFromInnertubeAsync(
@@ -267,10 +422,6 @@ function readYoutubeVideoId(url: URL): string | null {
     return videoIdOrNull(segments[1]);
   }
   return videoIdOrNull(url.searchParams.get("v") ?? undefined);
-}
-
-function isPlaylistUrl(url: URL): boolean {
-  return pathSegments(url)[0] === "playlist" || url.searchParams.has("list");
 }
 
 function pathSegments(url: URL): readonly string[] {
