@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Track } from "@yambot/audio-engine";
+import type { ResolveResult } from "@yambot/audio-engine";
 
 import type { CommandContext } from "./command-context.ts";
 import type { EnginePort, GuildMusicSession } from "./guild-music-session.ts";
@@ -262,7 +262,7 @@ class FakeContext implements CommandContext {
 
 class FakePlaySession {
   readonly engine: EnginePort = {
-    resolveTrack: async (): Promise<Track> => {
+    resolveTrack: async (): Promise<ResolveResult> => {
       throw new Error("resolveTrack is not used by door tests");
     },
     openTrackAudio: async (): Promise<never> => {

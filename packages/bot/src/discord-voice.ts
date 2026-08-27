@@ -21,10 +21,13 @@ const JOIN_READY_TIMEOUT_MS = 20_000;
 
 const FFMPEG_MISS =
   "Couldn't play that SoundCloud track: ffmpeg is not installed.";
+const HTTP_FFMPEG_MISS =
+  "Couldn't play that stream: ffmpeg is not installed.";
 
 const playbackInputByFormat: { readonly [K in AudioFormat]: StreamType } = {
   "webm/opus": StreamType.WebmOpus,
   "hls/aac": StreamType.Arbitrary,
+  "http/mpeg": StreamType.Arbitrary,
 };
 
 /**
@@ -42,13 +45,16 @@ export function streamTypeFor(format: AudioFormat): StreamType {
  * @returns Pinned ffmpeg-miss error, or the original error.
  */
 export function mapHlsPlayError(error: unknown): Error {
-  if (isMissingFfmpegError(error)) {
-    return new Error(FFMPEG_MISS);
-  }
-  if (error instanceof Error) {
-    return error;
-  }
-  return new Error(String(error));
+  return mapFfmpegPlayError(error, FFMPEG_MISS);
+}
+
+/**
+ * Maps an HTTP stream play spawn error to the user-safe ffmpeg-miss message.
+ * @param error - Error from createAudioResource or player.play.
+ * @returns Pinned ffmpeg-miss error, or the original error.
+ */
+export function mapHttpPlayError(error: unknown): Error {
+  return mapFfmpegPlayError(error, HTTP_FFMPEG_MISS);
 }
 
 /**
@@ -117,7 +123,7 @@ class DiscordVoicePort implements VoicePort {
 
   /**
    * Plays engine audio. YouTube webm/opus needs no ffmpeg. SoundCloud
-   * hls/aac uses PATH ffmpeg via StreamType.Arbitrary.
+   * hls/aac and HTTP http/mpeg use PATH ffmpeg via StreamType.Arbitrary.
    * @param audio - Stream and format from the engine.
    */
   async play(audio: TrackAudio): Promise<void> {
@@ -130,6 +136,9 @@ class DiscordVoicePort implements VoicePort {
     } catch (error) {
       if (audio.format === "hls/aac") {
         throw mapHlsPlayError(error);
+      }
+      if (audio.format === "http/mpeg") {
+        throw mapHttpPlayError(error);
       }
       throw error instanceof Error ? error : new Error(String(error));
     }
@@ -242,6 +251,16 @@ function isConnectionGone(status: VoiceConnectionStatus): boolean {
     status === VoiceConnectionStatus.Disconnected ||
     status === VoiceConnectionStatus.Destroyed
   );
+}
+
+function mapFfmpegPlayError(error: unknown, missMessage: string): Error {
+  if (isMissingFfmpegError(error)) {
+    return new Error(missMessage);
+  }
+  if (error instanceof Error) {
+    return error;
+  }
+  return new Error(String(error));
 }
 
 function isMissingFfmpegError(error: unknown): boolean {

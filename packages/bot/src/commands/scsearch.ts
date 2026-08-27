@@ -1,4 +1,8 @@
-import { TrackResolveError, type Track } from "@yambot/audio-engine";
+import {
+  TrackResolveError,
+  type ResolveResult,
+  type Track,
+} from "@yambot/audio-engine";
 import { SlashCommandBuilder } from "discord.js";
 
 import type { CommandContext } from "../command-context.ts";
@@ -8,6 +12,7 @@ import type { GuildMusicSession } from "../guild-music-session.ts";
 const USAGE_REPLY = "Usage: /scsearch <SoundCloud search words>";
 const NOT_IN_VOICE_REPLY = "Join a voice channel first.";
 const RESOLVE_FAILED_REPLY = "Couldn't play that SoundCloud track.";
+const PLAYLIST_EMPTY_REPLY = "That playlist has no playable tracks.";
 
 /** Slash command payload for `/scsearch`. `query` is optional so a bare `/scsearch` hits usage. */
 export const scsearchSlashData = new SlashCommandBuilder()
@@ -41,11 +46,11 @@ export async function executeScsearch(
   if (!didJoin) {
     return;
   }
-  const track: Track | null = await resolveOrReplyAsync(ctx, session);
-  if (track === null) {
+  const result: ResolveResult | null = await resolveOrReplyAsync(ctx, session);
+  if (result === null) {
     return;
   }
-  await playOrQueueAsync(ctx, session, track);
+  await playOrQueueAsync(ctx, session, result);
 }
 
 async function readVoiceChannelIdOrReplyAsync(
@@ -85,7 +90,7 @@ async function joinOrReplyAsync(
 async function resolveOrReplyAsync(
   ctx: CommandContext,
   session: GuildMusicSession,
-): Promise<Track | null> {
+): Promise<ResolveResult | null> {
   try {
     return await session.engine.resolveTrack({
       query: ctx.args,
@@ -104,24 +109,73 @@ async function resolveOrReplyAsync(
 async function playOrQueueAsync(
   ctx: CommandContext,
   session: GuildMusicSession,
-  track: Track,
+  result: ResolveResult,
 ): Promise<void> {
-  if (session.currentTrack !== null) {
-    const position: number = session.enqueue(track);
-    await ctx.reply(queuedReply(track, position));
+  const first: Track | undefined = result.tracks[0];
+  if (first === undefined) {
+    await ctx.reply(PLAYLIST_EMPTY_REPLY);
     return;
   }
+  if (session.currentTrack !== null) {
+    await enqueueWhileCurrentAsync(ctx, session, result, first);
+    return;
+  }
+  await playFirstThenQueueRestAsync(ctx, session, result, first);
+}
+
+async function enqueueWhileCurrentAsync(
+  ctx: CommandContext,
+  session: GuildMusicSession,
+  result: ResolveResult,
+  first: Track,
+): Promise<void> {
+  if (isSingleTrackResult(result)) {
+    const position: number = session.enqueue(first);
+    await ctx.reply(queuedReply(first, position));
+    return;
+  }
+  enqueueTracks(session, result.tracks);
+  await ctx.reply(addedReply(result));
+}
+
+async function playFirstThenQueueRestAsync(
+  ctx: CommandContext,
+  session: GuildMusicSession,
+  result: ResolveResult,
+  first: Track,
+): Promise<void> {
   try {
-    await session.playNow(track);
+    await session.playNow(first);
   } catch (error) {
     await ctx.reply(errorMessage(error));
     return;
   }
-  await ctx.reply(playingReply(track));
+  enqueueTracks(session, result.tracks.slice(1));
+  await ctx.reply(playingOrAddedReply(result, first));
+}
+
+function enqueueTracks(
+  session: GuildMusicSession,
+  tracks: readonly Track[],
+): void {
+  for (const track of tracks) {
+    session.enqueue(track);
+  }
 }
 
 function occupiedReply(channelName: string): string {
   return `Already playing in #${channelName} — join there.`;
+}
+
+function playingOrAddedReply(result: ResolveResult, first: Track): string {
+  if (isSingleTrackResult(result)) {
+    return playingReply(first);
+  }
+  return `${playingReply(first)}\n${addedReply(result)}`;
+}
+
+function isSingleTrackResult(result: ResolveResult): boolean {
+  return result.playlistTitle === null && result.tracks.length === 1;
 }
 
 function playingReply(track: Track): string {
@@ -130,6 +184,15 @@ function playingReply(track: Track): string {
 
 function queuedReply(track: Track, position: number): string {
   return `Queued (#${position}): ${track.title} (${formatDuration(track.durationSeconds)})`;
+}
+
+function addedReply(result: ResolveResult): string {
+  const title: string = result.playlistTitle ?? "playlist";
+  const line = `Added ${result.tracks.length} tracks from ${title}.`;
+  if (!result.truncated) {
+    return line;
+  }
+  return `${line.slice(0, -1)} (capped at 1000).`;
 }
 
 function errorMessage(error: unknown): string {

@@ -4,10 +4,17 @@ import {
   type SoundcloudTranscoding,
 } from "soundcloud.ts";
 
-import { TrackResolveError, type Track, type TrackAudio } from "../track.ts";
+import {
+  oneTrackResult,
+  playlistResult,
+  TrackResolveError,
+  type ResolveResult,
+  type Track,
+  type TrackAudio,
+} from "../track.ts";
 
-const PLAYLIST_UNSUPPORTED =
-  "Playlists are not supported yet. Use a track URL or search words.";
+const PLAYLIST_EMPTY = "That playlist has no playable tracks.";
+const PLAYLIST_FAILED = "Couldn't play that playlist.";
 const NO_SEARCH_HIT = "No SoundCloud results for that search.";
 const NO_PLAYABLE_AUDIO = "That track has no playable audio.";
 const PLAY_FAILED = "Couldn't play that SoundCloud track.";
@@ -17,9 +24,21 @@ export interface SoundCloudTrackUrlQuery {
   readonly url: string;
 }
 
+export interface SoundCloudPlaylistUrlQuery {
+  readonly kind: "playlist-url";
+  readonly url: string;
+}
+
 export interface SoundCloudSearchQuery {
   readonly kind: "search";
   readonly query: string;
+}
+
+export interface SoundCloudPlaylistTrack {
+  readonly title: string;
+  readonly permalinkUrl: string;
+  readonly durationSeconds: number;
+  readonly hasHlsAudio: boolean;
 }
 
 export interface SoundCloudClient {
@@ -29,6 +48,10 @@ export interface SoundCloudClient {
     readonly permalinkUrl: string;
     readonly kind: "track" | "playlist" | "other";
     readonly hasHlsAudio: boolean;
+  }>;
+  getPlaylist(url: string): Promise<{
+    readonly title: string;
+    readonly tracks: readonly SoundCloudPlaylistTrack[];
   }>;
   searchFirstTrackUrl(query: string): Promise<string | null>;
   openHlsAudio(permalinkUrl: string): Promise<ReadableStream<Uint8Array>>;
@@ -43,7 +66,7 @@ let defaultClient: SoundCloudClient | undefined;
  */
 export function parseSoundCloudQuery(
   query: string,
-): SoundCloudTrackUrlQuery | SoundCloudSearchQuery {
+): SoundCloudTrackUrlQuery | SoundCloudPlaylistUrlQuery | SoundCloudSearchQuery {
   const trimmed: string = query.trim();
   if (!URL.canParse(trimmed)) {
     return { kind: "search", query: trimmed };
@@ -53,7 +76,7 @@ export function parseSoundCloudQuery(
     return { kind: "search", query: trimmed };
   }
   if (url.pathname.includes("/sets/")) {
-    throw new TrackResolveError(PLAYLIST_UNSUPPORTED);
+    return { kind: "playlist-url", url: trimmed };
   }
   return { kind: "track-url", url: trimmed };
 }
@@ -62,26 +85,32 @@ export function parseSoundCloudQuery(
  * Resolves a query to one playable track using a SoundCloud client seam.
  * @param input - Query to resolve.
  * @param client - Testable SoundCloud wrapper.
- * @returns One track.
+ * @returns One track or a playlist of tracks.
  */
 export async function resolveSoundCloudTrackWithClient(
   input: { readonly query: string },
   client: SoundCloudClient,
-): Promise<Track> {
+): Promise<ResolveResult> {
   const parsed = parseSoundCloudQuery(input.query);
+  if (parsed.kind === "playlist-url") {
+    return resolveSoundCloudPlaylistAsync(parsed.url, client);
+  }
   const url: string = await resolveTrackUrlAsync(parsed, client);
   const track = await fetchTrackAsync(client, url);
+  if (track.kind === "playlist") {
+    return resolveSoundCloudPlaylistAsync(track.permalinkUrl, client);
+  }
   if (track.kind !== "track") {
-    throw new TrackResolveError(PLAYLIST_UNSUPPORTED);
+    throw new TrackResolveError(PLAYLIST_FAILED);
   }
   if (!track.hasHlsAudio) {
     throw new TrackResolveError(NO_PLAYABLE_AUDIO);
   }
-  return {
+  return oneTrackResult({
     title: track.title,
     uri: track.permalinkUrl,
     durationSeconds: track.durationSeconds,
-  };
+  });
 }
 
 /**
@@ -116,11 +145,36 @@ export function getDefaultSoundCloudClient(): SoundCloudClient {
 function wrapSoundcloudLibrary(soundcloud: Soundcloud): SoundCloudClient {
   return {
     getTrack: (url) => getTrackFromLibraryAsync(soundcloud, url),
+    getPlaylist: (url) => getPlaylistFromLibraryAsync(soundcloud, url),
     searchFirstTrackUrl: (query) =>
       searchFirstTrackUrlAsync(soundcloud, query),
     openHlsAudio: (permalinkUrl) =>
       openHlsAudioFromLibraryAsync(soundcloud, permalinkUrl),
   };
+}
+
+async function getPlaylistFromLibraryAsync(
+  soundcloud: Soundcloud,
+  url: string,
+): Promise<{
+  readonly title: string;
+  readonly tracks: readonly SoundCloudPlaylistTrack[];
+}> {
+  try {
+    const playlist = await soundcloud.playlists.get(url);
+    const apiTracks: readonly SoundcloudTrack[] = playlist.tracks ?? [];
+    return {
+      title: playlist.title ?? "",
+      tracks: apiTracks.map((apiTrack) => ({
+        title: apiTrack.title ?? "",
+        permalinkUrl: apiTrack.permalink_url,
+        durationSeconds: durationSecondsFromMs(apiTrack.duration),
+        hasHlsAudio: hasHlsTranscoding(apiTrack),
+      })),
+    };
+  } catch (error) {
+    throw toPlaylistError(error);
+  }
 }
 
 async function getTrackFromLibraryAsync(
@@ -311,6 +365,35 @@ function durationSecondsFromMs(durationMs: number | undefined): number {
     return 0;
   }
   return Math.floor(durationMs / 1000);
+}
+
+async function resolveSoundCloudPlaylistAsync(
+  url: string,
+  client: SoundCloudClient,
+): Promise<ResolveResult> {
+  try {
+    const playlist = await client.getPlaylist(url);
+    const tracks: Track[] = playlist.tracks
+      .filter((item) => item.hasHlsAudio && item.permalinkUrl !== "")
+      .map((item) => ({
+        title: item.title,
+        uri: item.permalinkUrl,
+        durationSeconds: item.durationSeconds,
+      }));
+    if (tracks.length === 0) {
+      throw new TrackResolveError(PLAYLIST_EMPTY);
+    }
+    return playlistResult(playlist.title, tracks);
+  } catch (error) {
+    throw toPlaylistError(error);
+  }
+}
+
+function toPlaylistError(error: unknown): TrackResolveError {
+  if (error instanceof TrackResolveError) {
+    return error;
+  }
+  return new TrackResolveError(PLAYLIST_FAILED);
 }
 
 async function resolveTrackUrlAsync(

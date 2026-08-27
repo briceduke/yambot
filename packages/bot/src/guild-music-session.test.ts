@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import {
   TrackResolveError,
+  type ResolveResult,
   type Track,
   type TrackAudio,
 } from "@yambot/audio-engine";
@@ -501,7 +502,7 @@ function createEngine(
   const failTitles: ReadonlySet<string> = options.failTitles ?? new Set();
   const stream: ReadableStream<Uint8Array> = options.stream ?? emptyStream();
   return {
-    async resolveTrack(): Promise<Track> {
+    async resolveTrack(): Promise<ResolveResult> {
       throw new Error("resolveTrack is not used in session tests");
     },
     async openTrackAudio(input: {
