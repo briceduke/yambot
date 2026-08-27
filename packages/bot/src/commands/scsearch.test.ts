@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { TrackResolveError, type Track } from "@yambot/audio-engine";
+import { TrackResolveError, type ResolveResult, type Track } from "@yambot/audio-engine";
 
 import type { CommandContext } from "../command-context.ts";
 import type { EnginePort, GuildMusicSession } from "../guild-music-session.ts";
@@ -159,6 +159,35 @@ describe("executeScsearch", () => {
     ]);
     expect(session.played).toEqual([]);
   });
+
+  test("expands a SoundCloud set when idle", async () => {
+    const session = new FakeSession();
+    const first = sampleTrack("A", 10);
+    const second = sampleTrack("C", 30);
+    session.resolvedResult = {
+      tracks: [first, second],
+      playlistTitle: "Album",
+      truncated: false,
+    };
+    const ctx = createContext({
+      args: "https://soundcloud.com/artist/sets/album",
+      invokerVoiceChannelId: "voice-1",
+    });
+
+    await executeScsearch(ctx, session.asGuildSession());
+
+    expect(ctx.replies).toEqual([
+      "Playing: A (0:10)\nAdded 2 tracks from Album.",
+    ]);
+    expect(session.played).toEqual([first]);
+    expect(session.queued).toEqual([second]);
+    expect(session.resolveInputs).toEqual([
+      {
+        query: "https://soundcloud.com/artist/sets/album",
+        source: "soundcloud",
+      },
+    ]);
+  });
 });
 
 class FakeContext implements CommandContext {
@@ -192,6 +221,7 @@ class FakeSession {
   occupied = false;
   enqueuePosition = 2;
   resolvedTrack: Track = sampleTrack("Song", 180);
+  resolvedResult: ResolveResult | null = null;
   resolveError: Error | null = null;
   playNowError: Error | null = null;
   readonly resolveInputs: {
@@ -202,12 +232,19 @@ class FakeSession {
     resolveTrack: async (input: {
       readonly query: string;
       readonly source?: "soundcloud";
-    }): Promise<Track> => {
+    }): Promise<ResolveResult> => {
       this.resolveInputs.push(input);
       if (this.resolveError !== null) {
         throw this.resolveError;
       }
-      return this.resolvedTrack;
+      if (this.resolvedResult !== null) {
+        return this.resolvedResult;
+      }
+      return {
+        tracks: [this.resolvedTrack],
+        playlistTitle: null,
+        truncated: false,
+      };
     },
     openTrackAudio: async (): Promise<never> => {
       throw new Error("openTrackAudio is not used by scsearch tests");

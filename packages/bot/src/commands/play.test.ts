@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { TrackResolveError, type Track } from "@yambot/audio-engine";
+import { TrackResolveError, type ResolveResult, type Track } from "@yambot/audio-engine";
 
 import type { CommandContext } from "../command-context.ts";
 import type { EnginePort, GuildMusicSession } from "../guild-music-session.ts";
@@ -13,7 +13,7 @@ describe("executePlay", () => {
     await executePlay(ctx, session.asGuildSession());
 
     expect(ctx.replies).toEqual([
-      "Usage: /play <YouTube or SoundCloud URL or YouTube search words>",
+      "Usage: /play <YouTube, SoundCloud, playlist, or stream URL, or YouTube search words>",
     ]);
     expect(session.joinChannelIds).toEqual([]);
   });
@@ -142,6 +142,102 @@ describe("executePlay", () => {
     expect(session.unpauseCalls).toBe(0);
     expect(session.isPaused()).toBe(true);
   });
+
+  test("plays the first playlist track and enqueues the rest when idle", async () => {
+    const session = new FakeSession();
+    const first = sampleTrack("One", 10);
+    const second = sampleTrack("Two", 20);
+    session.resolvedResult = playlistResult("Summer Mix", [first, second]);
+    const ctx = createContext({
+      args: "https://www.youtube.com/playlist?list=PLtest",
+      invokerVoiceChannelId: "voice-1",
+    });
+
+    await executePlay(ctx, session.asGuildSession());
+
+    expect(ctx.replies).toEqual([
+      "Playing: One (0:10)\nAdded 2 tracks from Summer Mix.",
+    ]);
+    expect(session.played).toEqual([first]);
+    expect(session.queued).toEqual([second]);
+  });
+
+  test("enqueues every playlist track and replies Added when occupied", async () => {
+    const session = new FakeSession();
+    session.currentTrack = sampleTrack("current", 100);
+    const first = sampleTrack("One", 10);
+    const second = sampleTrack("Two", 20);
+    session.resolvedResult = playlistResult("Summer Mix", [first, second]);
+    const ctx = createContext({
+      args: "https://www.youtube.com/playlist?list=PLtest",
+      invokerVoiceChannelId: "voice-1",
+    });
+
+    await executePlay(ctx, session.asGuildSession());
+
+    expect(ctx.replies).toEqual(["Added 2 tracks from Summer Mix."]);
+    expect(session.played).toEqual([]);
+    expect(session.queued).toEqual([first, second]);
+  });
+
+  test("notes the cap when the playlist was truncated", async () => {
+    const session = new FakeSession();
+    const first = sampleTrack("One", 10);
+    session.resolvedResult = {
+      tracks: [first],
+      playlistTitle: "Long",
+      truncated: true,
+    };
+    const ctx = createContext({
+      args: "https://www.youtube.com/playlist?list=PLlong",
+      invokerVoiceChannelId: "voice-1",
+    });
+
+    await executePlay(ctx, session.asGuildSession());
+
+    expect(ctx.replies).toEqual([
+      "Playing: One (0:10)\nAdded 1 tracks from Long (capped at 1000).",
+    ]);
+    expect(session.played).toEqual([first]);
+  });
+
+  test("does not enqueue remaining tracks when playNow fails on the first", async () => {
+    const session = new FakeSession();
+    const first = sampleTrack("One", 10);
+    const second = sampleTrack("Two", 20);
+    session.resolvedResult = playlistResult("Summer Mix", [first, second]);
+    session.playNowError = new Error("Couldn't play that YouTube video.");
+    const ctx = createContext({
+      args: "https://www.youtube.com/playlist?list=PLtest",
+      invokerVoiceChannelId: "voice-1",
+    });
+
+    await executePlay(ctx, session.asGuildSession());
+
+    expect(ctx.replies).toEqual(["Couldn't play that YouTube video."]);
+    expect(session.played).toEqual([]);
+    expect(session.queued).toEqual([]);
+  });
+
+  test("enqueues a playlist and stays paused when current is paused", async () => {
+    const session = new FakeSession();
+    session.currentTrack = sampleTrack("current", 100);
+    session.paused = true;
+    const first = sampleTrack("One", 10);
+    const second = sampleTrack("Two", 20);
+    session.resolvedResult = playlistResult("Summer Mix", [first, second]);
+    const ctx = createContext({
+      args: "https://www.youtube.com/playlist?list=PLtest",
+      invokerVoiceChannelId: "voice-1",
+    });
+
+    await executePlay(ctx, session.asGuildSession());
+
+    expect(ctx.replies).toEqual(["Added 2 tracks from Summer Mix."]);
+    expect(session.queued).toEqual([first, second]);
+    expect(session.unpauseCalls).toBe(0);
+    expect(session.isPaused()).toBe(true);
+  });
 });
 
 class FakeContext implements CommandContext {
@@ -175,6 +271,7 @@ class FakeSession {
   occupied = false;
   enqueuePosition = 2;
   resolvedTrack: Track = sampleTrack("Song", 213);
+  resolvedResult: ResolveResult | null = null;
   resolveError: Error | null = null;
   playNowError: Error | null = null;
   readonly resolveInputs: {
@@ -185,12 +282,19 @@ class FakeSession {
     resolveTrack: async (input: {
       readonly query: string;
       readonly source?: "soundcloud";
-    }): Promise<Track> => {
+    }): Promise<ResolveResult> => {
       this.resolveInputs.push(input);
       if (this.resolveError !== null) {
         throw this.resolveError;
       }
-      return this.resolvedTrack;
+      if (this.resolvedResult !== null) {
+        return this.resolvedResult;
+      }
+      return {
+        tracks: [this.resolvedTrack],
+        playlistTitle: null,
+        truncated: false,
+      };
     },
     openTrackAudio: async (): Promise<never> => {
       throw new Error("openTrackAudio is not used by play tests");
@@ -246,4 +350,11 @@ function sampleTrack(title: string, durationSeconds: number): Track {
     uri: `https://www.youtube.com/watch?v=${title}`,
     durationSeconds,
   };
+}
+
+function playlistResult(
+  title: string,
+  tracks: readonly Track[],
+): ResolveResult {
+  return { tracks, playlistTitle: title, truncated: false };
 }

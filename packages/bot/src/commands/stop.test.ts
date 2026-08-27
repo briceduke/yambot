@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Track, TrackAudio } from "@yambot/audio-engine";
+import type { ResolveResult, Track, TrackAudio } from "@yambot/audio-engine";
 
 import type { CommandContext } from "../command-context.ts";
 import {
@@ -141,7 +141,7 @@ function createContext(guildId: string): FakeContext {
 
 function createEngine(): EnginePort {
   return {
-    async resolveTrack(): Promise<Track> {
+    async resolveTrack(): Promise<ResolveResult> {
       throw new Error("resolveTrack is not used by stop tests");
     },
     async openTrackAudio(): Promise<TrackAudio> {

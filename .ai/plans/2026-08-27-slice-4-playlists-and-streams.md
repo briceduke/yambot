@@ -17,7 +17,7 @@ Worker digest (do not read `.ai/lessons.md`):
 
 ## Progress
 
-- [ ] Task 1: Widen resolve and expand YouTube / SoundCloud playlists
+- [x] Task 1: Widen resolve and expand YouTube / SoundCloud playlists
 - [ ] Task 2: Add the HTTP stream source module
 - [ ] Task 3: Add Added-N play UX
 - [ ] Task 4: Map `http/mpeg` to PATH ffmpeg
