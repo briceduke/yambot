@@ -4,6 +4,7 @@ import {
   Events,
   GatewayIntentBits,
   GuildMember,
+  PermissionFlagsBits,
   Routes,
   type ChatInputCommandInteraction,
   type Client as DiscordClient,
@@ -11,32 +12,44 @@ import {
   type Guild,
   type Interaction,
   type Message,
+  type VoiceState,
 } from "discord.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { CommandContext } from "./command-context.ts";
 import { executeClear } from "./commands/clear.ts";
+import { executeHelp } from "./commands/help.ts";
 import { executeNowPlaying } from "./commands/nowplaying.ts";
 import { executePause } from "./commands/pause.ts";
 import { executePlay } from "./commands/play.ts";
+import { executePrefix } from "./commands/prefix.ts";
 import { executeQueue } from "./commands/queue.ts";
-import { executeScsearch } from "./commands/scsearch.ts";
 import { executeRemove } from "./commands/remove.ts";
 import { executeResume } from "./commands/resume.ts";
+import { executeScsearch } from "./commands/scsearch.ts";
+import { executeSetDj } from "./commands/setdj.ts";
+import { executeSetTc } from "./commands/settc.ts";
+import { executeSetVc } from "./commands/setvc.ts";
+import { executeSettings } from "./commands/settings.ts";
 import { executeShuffle } from "./commands/shuffle.ts";
 import { executeSkip } from "./commands/skip.ts";
 import { executeStop } from "./commands/stop.ts";
 import { createDiscordVoicePort } from "./discord-voice.ts";
+import { applyDoorGates } from "./door-gates.ts";
 import {
   createSession,
   getSession,
   type EnginePort,
   type GuildMusicSession,
+  type LeavePolicy,
 } from "./guild-music-session.ts";
 import {
+  getGuildOperatorView,
+  readOperatorEnv,
+} from "./operator-config.ts";
+import {
   parsePrefixMessage,
-  readCommandPrefix,
   type ParsedPrefixCommand,
   type PrefixParseInput,
 } from "./prefix.ts";
@@ -54,6 +67,8 @@ const engine: EnginePort = {
 const prefixAliases: Readonly<Record<string, string>> = {
   np: "nowplaying",
   leave: "stop",
+  setprefix: "prefix",
+  status: "settings",
 };
 
 const knownCommandNames = new Set([
@@ -68,10 +83,20 @@ const knownCommandNames = new Set([
   "shuffle",
   "clear",
   "stop",
+  "help",
+  "settings",
+  "setdj",
+  "prefix",
+  "settc",
+  "setvc",
 ]);
 
 interface SessionCommand {
   (ctx: CommandContext, session: GuildMusicSession | undefined): Promise<void>;
+}
+
+interface OperatorCommand {
+  (ctx: CommandContext): Promise<void>;
 }
 
 const sessionCommands: Readonly<Record<string, SessionCommand>> = {
@@ -84,6 +109,15 @@ const sessionCommands: Readonly<Record<string, SessionCommand>> = {
   shuffle: executeShuffle,
   clear: executeClear,
   stop: executeStop,
+};
+
+const operatorCommands: Readonly<Record<string, OperatorCommand>> = {
+  help: executeHelp,
+  settings: executeSettings,
+  setdj: executeSetDj,
+  prefix: executePrefix,
+  settc: executeSetTc,
+  setvc: executeSetVc,
 };
 
 const suppressedMentions = { parse: [] as const };
@@ -99,6 +133,11 @@ export async function dispatchCommand(
   ctx: CommandContext,
   session: GuildMusicSession | undefined,
 ): Promise<void> {
+  const operator: OperatorCommand | undefined = operatorCommands[name];
+  if (operator !== undefined) {
+    await operator(ctx);
+    return;
+  }
   if (name === "play" || name === "scsearch") {
     if (session === undefined) {
       return;
@@ -119,7 +158,7 @@ export async function dispatchCommand(
 
 /**
  * Parses a prefix message and drops bots, DMs, non-commands, and unknown names.
- * Maps prefix-only aliases (`np`, `leave`) to canonical names.
+ * Maps prefix-only aliases (`np`, `leave`, `setprefix`, `status`) to canonical names.
  * @param input - Prefix parse fields from a message-like object.
  * @returns Known command name and args, or `null` when the door should ignore.
  */
@@ -174,6 +213,12 @@ function bindClientEvents(client: DiscordClient): void {
   client.on(Events.MessageCreate, (message: Message) => {
     void handlePrefixMessage(message);
   });
+  client.on(
+    Events.VoiceStateUpdate,
+    (_oldState: VoiceState, newState: VoiceState) => {
+      handleVoiceStateUpdate(newState.guild);
+    },
+  );
 }
 
 async function registerReadyGuilds(
@@ -223,29 +268,38 @@ async function handleInteraction(interaction: Interaction): Promise<void> {
   if (guild === null || interaction.channelId === null) {
     return;
   }
+  const member: GuildMember | null =
+    interaction.member instanceof GuildMember ? interaction.member : null;
   await runDoorCommand(
     interaction.commandName,
     createSlashContext(interaction, guild),
     guild,
     interaction.channel,
+    member,
   );
 }
 
 async function handlePrefixMessage(message: Message): Promise<void> {
+  const guild: Guild | null = message.guild;
+  if (guild === null) {
+    return;
+  }
   const parsed: ParsedPrefixCommand | null = readPrefixDoorCommand({
     content: message.content,
-    prefix: readCommandPrefix(process.env),
+    prefix: getGuildOperatorView(guild.id, process.env).prefix,
     isBot: message.author.bot,
-    inGuild: message.guild !== null,
+    inGuild: true,
+    botUserId: message.client.user?.id,
   });
-  if (parsed === null || message.guild === null) {
+  if (parsed === null) {
     return;
   }
   await runDoorCommand(
     parsed.name,
-    createPrefixContext(message, message.guild, parsed.args),
-    message.guild,
+    createPrefixContext(message, guild, parsed.args),
+    guild,
     message.channel,
+    message.member,
   );
 }
 
@@ -254,7 +308,22 @@ async function runDoorCommand(
   ctx: CommandContext,
   guild: Guild,
   announceChannel: ChatInputCommandInteraction["channel"] | Message["channel"],
+  member: GuildMember | null,
 ): Promise<void> {
+  const denyReply: string | null = applyDoorGates({
+    name,
+    guildId: guild.id,
+    channelId: ctx.channelId,
+    invokerVoiceChannelId: ctx.invokerVoiceChannelId,
+    invokerIsAdmin: memberHasManageGuild(member),
+    invokerRoleIds: memberRoleIds(member),
+    env: process.env,
+    boundVoiceChannelName: readBoundVoiceChannelName(guild),
+  });
+  if (denyReply !== null) {
+    await ctx.reply(denyReply);
+    return;
+  }
   if (name === "play" || name === "scsearch") {
     const session: GuildMusicSession = getOrCreateGuildSession(guild);
     bindAnnounceFromChannel(session, announceChannel);
@@ -273,7 +342,17 @@ function getOrCreateGuildSession(guild: Guild): GuildMusicSession {
     guildId: guild.id,
     engine,
     voice: createDiscordVoicePort(guild),
+    leavePolicy: leavePolicyFromEnv(process.env),
   });
+}
+
+function leavePolicyFromEnv(env: NodeJS.ProcessEnv): LeavePolicy {
+  const parsed = readOperatorEnv(env);
+  return {
+    idleLeaveMs: parsed.idleLeaveSeconds * 1000,
+    stayInChannel: parsed.stayInChannel,
+    aloneTimeUntilStopMs: parsed.aloneTimeUntilStopSeconds * 1000,
+  };
 }
 
 function createSlashContext(
@@ -309,6 +388,15 @@ function readSlashArgs(interaction: ChatInputCommandInteraction): string {
     }
     return String(position);
   }
+  if (interaction.commandName === "prefix") {
+    return interaction.options.getString("value") ?? "";
+  }
+  if (interaction.commandName === "setdj") {
+    return interaction.options.getRole("role")?.id ?? "";
+  }
+  if (interaction.commandName === "settc" || interaction.commandName === "setvc") {
+    return interaction.options.getChannel("channel")?.id ?? "";
+  }
   return "";
 }
 
@@ -341,6 +429,61 @@ function readInvokerVoiceChannelId(
     return member.voice.channelId;
   }
   return guild.voiceStates.cache.get(userId)?.channelId ?? null;
+}
+
+function memberHasManageGuild(member: GuildMember | null): boolean {
+  if (member === null) {
+    return false;
+  }
+  return member.permissions.has(PermissionFlagsBits.ManageGuild);
+}
+
+function memberRoleIds(member: GuildMember | null): readonly string[] {
+  if (member === null) {
+    return [];
+  }
+  return [...member.roles.cache.keys()];
+}
+
+function readBoundVoiceChannelName(guild: Guild): string | null {
+  const voiceChannelId: string | null = getGuildOperatorView(
+    guild.id,
+    process.env,
+  ).voiceChannelId;
+  if (voiceChannelId === null) {
+    return null;
+  }
+  const channel = guild.channels.cache.get(voiceChannelId);
+  if (channel === undefined) {
+    return null;
+  }
+  return channel.name;
+}
+
+function handleVoiceStateUpdate(guild: Guild): void {
+  const session: GuildMusicSession | undefined = getSession(guild.id);
+  if (session === undefined) {
+    return;
+  }
+  const channelId: string | null = session.voiceChannelId;
+  if (channelId === null) {
+    return;
+  }
+  session.noteHumanListenerCount(countHumansInVoice(guild, channelId));
+}
+
+function countHumansInVoice(guild: Guild, channelId: string): number {
+  let count = 0;
+  for (const state of guild.voiceStates.cache.values()) {
+    if (state.channelId !== channelId) {
+      continue;
+    }
+    if (state.member === null || state.member.user.bot) {
+      continue;
+    }
+    count += 1;
+  }
+  return count;
 }
 
 function bindAnnounceFromChannel(

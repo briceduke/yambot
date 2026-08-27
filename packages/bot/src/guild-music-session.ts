@@ -290,6 +290,14 @@ export class GuildMusicSession {
   }
 
   /**
+   * Voice channel id the bot is connected to, or `null` when not in voice.
+   * @returns Channel snowflake, or `null`.
+   */
+  get voiceChannelId(): string | null {
+    return this.#voice.getChannelId();
+  }
+
+  /**
    * Removes one upcoming track by 0-based index.
    * @param index - Position in the upcoming list.
    * @returns The removed track, or `null` if the index is out of range.
