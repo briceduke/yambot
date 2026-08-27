@@ -510,23 +510,30 @@ shape. Do not mark live InnerTube playlist expand as proved from CI.
 
 **Tags:** platform
 
+---
+
+## Context
+
+Slice 4 playlist `/queue` durations. youtubei.js v18 `LockupView` has
+no `duration.seconds`. Length is overlay badge text (`3:45`),
+`duration.text`, `length_seconds`, or a ContentMetadataView row.
 
 ## Problem
 
-Slice `.ai/` files that belong to the work never entered git. The human
-smoke script lived only in the spec. CI passing was easy to read as live
-pause/leave proved.
+`readItemDurationSeconds` only read `item.duration.seconds`. Mapped
+playlist tracks were duration 0, so `/queue` printed `0:00` for every
+row. Calling `getInfo` per video would be slow and rate-limited.
 
 ## Rule
 
-The execute parent commits slice `.ai/` files through `/check-and-commit`
-(spec, plan + task cards, grill/research runs, architecture/lessons). At
-finish, paste the spec's human smoke steps; do not invent a second script.
-Do not wait 5 minutes when the spec says the timer seam is CI-covered. Do
-not mark live pause/leave as proved from CI.
+Parse duration from InnerTube playlist item fields already on the page:
+numeric `duration.seconds` / `length_seconds` / `lengthSeconds`, then
+clock text on `duration.text`, thumbnail overlay badges, and metadata
+rows. Missing length may stay 0. Do not N+1 `getInfo` to fill playlist
+durations. One-video resolve still uses `basic_info.duration`.
 
 ## Applies to
 
-`/execute` serial commit lane and finish report; `/test` unverifiable rows.
+`packages/audio-engine` YouTube playlist mapping.
 
-**Tags:** process, execute
+**Tags:** platform
