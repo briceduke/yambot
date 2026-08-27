@@ -43,7 +43,7 @@ export const structureConfig: StructureConfig = {
     {
       id: "engine-source-module",
       match: "packages/audio-engine/src/sources",
-      requiredFiles: ["youtube.ts", "soundcloud.ts"],
+      requiredFiles: ["youtube.ts", "soundcloud.ts", "http.ts"],
     },
     {
       id: "bot-src",
