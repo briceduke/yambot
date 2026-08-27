@@ -156,6 +156,28 @@ export async function getDefaultYoutubeClientAsync(): Promise<YoutubeClient> {
   return defaultClientPromise;
 }
 
+/**
+ * Maps youtubei.js playlist page items (`PlaylistVideo`, `LockupView`,
+ * and similar) to videos. Throws when items exist but none have a video id.
+ * @param items - Raw `page.items` entries from youtubei.js.
+ * @returns Mapped videos, possibly empty when `items` is empty.
+ */
+export function playlistVideosFromItems(
+  items: readonly unknown[],
+): readonly YoutubePlaylistVideo[] {
+  const videos: YoutubePlaylistVideo[] = [];
+  for (const item of items) {
+    const video: YoutubePlaylistVideo | null = readPlaylistVideo(item);
+    if (video !== null) {
+      videos.push(video);
+    }
+  }
+  if (items.length > 0 && videos.length === 0) {
+    throw new TrackResolveError(PLAYLIST_FAILED);
+  }
+  return videos;
+}
+
 function wrapInnertube(innertube: Innertube): YoutubeClient {
   return {
     getVideo: (videoId) => getVideoFromInnertubeAsync(innertube, videoId),
@@ -191,7 +213,7 @@ async function collectPlaylistVideosAsync(
   const title: string = page.info.title ?? "";
   const videos: YoutubePlaylistVideo[] = [];
   while (true) {
-    appendPlaylistVideos(videos, page.items);
+    videos.push(...playlistVideosFromItems(page.items));
     if (countPlayable(videos) > MAX_PLAYLIST_TRACKS || !page.has_continuation) {
       break;
     }
@@ -200,39 +222,54 @@ async function collectPlaylistVideosAsync(
   return { title, videos };
 }
 
-function appendPlaylistVideos(
-  videos: YoutubePlaylistVideo[],
-  items: readonly unknown[],
-): void {
-  for (const item of items) {
-    const video: YoutubePlaylistVideo | null = readPlaylistVideo(item);
-    if (video !== null) {
-      videos.push(video);
-    }
-  }
-}
-
 function countPlayable(videos: readonly YoutubePlaylistVideo[]): number {
   return videos.filter((video) => video.isPlayable).length;
 }
 
 function readPlaylistVideo(item: unknown): YoutubePlaylistVideo | null {
-  if (typeof item !== "object" || item === null || !("id" in item)) {
+  if (typeof item !== "object" || item === null) {
     return null;
   }
-  const videoId: unknown = item.id;
-  if (typeof videoId !== "string" || videoId === "") {
+  const videoId: string | null = readItemVideoId(item);
+  if (videoId === null) {
     return null;
   }
   return {
     videoId,
     title: readItemTitle(item),
     durationSeconds: readItemDurationSeconds(item),
-    isPlayable: !("is_playable" in item) || item.is_playable === true,
+    isPlayable: readItemIsPlayable(item),
   };
 }
 
+function readItemVideoId(item: object): string | null {
+  const record: Record<string, unknown> = item as Record<string, unknown>;
+  return (
+    videoIdOrNull(asNonEmptyString(record.id)) ??
+    videoIdOrNull(asNonEmptyString(record.video_id)) ??
+    videoIdOrNull(asNonEmptyString(record.content_id))
+  );
+}
+
+function readItemIsPlayable(item: object): boolean {
+  const record: Record<string, unknown> = item as Record<string, unknown>;
+  return record.is_playable !== false;
+}
+
 function readItemTitle(item: object): string {
+  const direct: string = readTitleValue(item);
+  if (direct !== "") {
+    return direct;
+  }
+  const record: Record<string, unknown> = item as Record<string, unknown>;
+  const metadata: unknown = record.metadata;
+  if (typeof metadata === "object" && metadata !== null) {
+    return readTitleValue(metadata);
+  }
+  return "";
+}
+
+function readTitleValue(item: object): string {
   if (!("title" in item)) {
     return "";
   }
@@ -247,6 +284,13 @@ function readItemTitle(item: object): string {
   return "";
 }
 
+function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string" || value === "") {
+    return undefined;
+  }
+  return value;
+}
+
 function readItemDurationSeconds(item: object): number {
   if (!("duration" in item) || typeof item.duration !== "object") {
     return 0;
@@ -257,6 +301,23 @@ function readItemDurationSeconds(item: object): number {
   }
   const seconds: unknown = duration.seconds;
   return typeof seconds === "number" && !Number.isNaN(seconds) ? seconds : 0;
+}
+
+function tracksFromPlaylistVideos(
+  videos: readonly YoutubePlaylistVideo[],
+): Track[] {
+  const playable: readonly YoutubePlaylistVideo[] = videos.filter(
+    (video) => video.isPlayable && video.videoId !== "",
+  );
+  const kept: readonly YoutubePlaylistVideo[] =
+    playable.length > 0
+      ? playable
+      : videos.filter((video) => video.videoId !== "");
+  return kept.map((video) => ({
+    title: video.title,
+    uri: canonicalWatchUri(video.videoId),
+    durationSeconds: video.durationSeconds,
+  }));
 }
 
 function toPlaylistError(error: unknown): TrackResolveError {
@@ -272,13 +333,7 @@ async function resolvePlaylistAsync(
 ): Promise<ResolveResult> {
   try {
     const playlist = await client.getPlaylist(playlistId);
-    const tracks: Track[] = playlist.videos
-      .filter((video) => video.isPlayable && video.videoId !== "")
-      .map((video) => ({
-        title: video.title,
-        uri: canonicalWatchUri(video.videoId),
-        durationSeconds: video.durationSeconds,
-      }));
+    const tracks: Track[] = tracksFromPlaylistVideos(playlist.videos);
     if (tracks.length === 0) {
       throw new TrackResolveError(PLAYLIST_EMPTY);
     }

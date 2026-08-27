@@ -477,3 +477,56 @@ not mark live pause/leave as proved from CI.
 `/execute` serial commit lane and finish report; `/test` unverifiable rows.
 
 **Tags:** process, execute
+
+---
+
+## Context
+
+Slice 4 YouTube playlist expand. youtubei.js v18 `Playlist.items` is
+`LockupView | PlaylistVideo | ReelItem | ShortsLockupView`.
+`PlaylistVideo.id` comes from raw `videoId`. `LockupView` has
+`content_id`, not `id`. `PlaylistVideo.is_playable` is often `undefined`
+because InnerTube omits `isPlayable`.
+
+## Problem
+
+`readPlaylistVideo` required `item.id` and treated `is_playable !== true`
+as skip. Real playlist items then mapped to zero videos, and
+`resolvePlaylistAsync` replied `That playlist has no playable tracks.`
+A public playlist with items is not empty.
+
+## Rule
+
+Read video id from `id`, `video_id`, or `content_id`. Treat missing
+`is_playable` as playable; skip strict `false` only when other tracks
+remain. Items present but none parse → `Couldn't play that playlist.`
+Zero items → `That playlist has no playable tracks.` Fake-client tests
+must use youtubei.js field names, not only the mapped `YoutubeClient`
+shape. Do not mark live InnerTube playlist expand as proved from CI.
+
+## Applies to
+
+`packages/audio-engine` YouTube playlist mapping.
+
+**Tags:** platform
+
+
+## Problem
+
+Slice `.ai/` files that belong to the work never entered git. The human
+smoke script lived only in the spec. CI passing was easy to read as live
+pause/leave proved.
+
+## Rule
+
+The execute parent commits slice `.ai/` files through `/check-and-commit`
+(spec, plan + task cards, grill/research runs, architecture/lessons). At
+finish, paste the spec's human smoke steps; do not invent a second script.
+Do not wait 5 minutes when the spec says the timer seam is CI-covered. Do
+not mark live pause/leave as proved from CI.
+
+## Applies to
+
+`/execute` serial commit lane and finish report; `/test` unverifiable rows.
+
+**Tags:** process, execute
