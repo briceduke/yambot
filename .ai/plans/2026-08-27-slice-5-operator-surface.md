@@ -20,10 +20,10 @@ Worker digest (do not read `.ai/lessons.md`):
 - [x] Task 1: Add operator-config env, overlay, and DJ check
 - [x] Task 2: Parse mention-as-prefix
 - [x] Task 3: Add LeavePolicy and alone-timer on the session
-- [ ] Task 4: Add help, settings, setdj, prefix, settc, setvc commands
-- [ ] Task 5: Wire door gates, aliases, voice-state, and slash registration
-- [ ] Task 6: Grow structure check, README, env example, First examples
-- [ ] Task 7: Final scoped proof
+- [x] Task 4: Add help, settings, setdj, prefix, settc, setvc commands
+- [x] Task 5: Wire door gates, aliases, voice-state, and slash registration
+- [x] Task 6: Grow structure check, README, env example, First examples
+- [x] Task 7: Final scoped proof
 
 ## Parallel groups
 
