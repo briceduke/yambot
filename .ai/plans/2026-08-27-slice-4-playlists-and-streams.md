@@ -18,8 +18,8 @@ Worker digest (do not read `.ai/lessons.md`):
 ## Progress
 
 - [x] Task 1: Widen resolve and expand YouTube / SoundCloud playlists
-- [ ] Task 2: Add the HTTP stream source module
-- [ ] Task 3: Add Added-N play UX
+- [x] Task 2: Add the HTTP stream source module
+- [x] Task 3: Add Added-N play UX
 - [ ] Task 4: Map `http/mpeg` to PATH ffmpeg
 - [ ] Task 5: Grow the structure check and README
 - [ ] Task 6: Final scoped proof
