@@ -120,8 +120,8 @@ function spawnWorkerOrNull(): RemuxWorker | null {
       stdio: ["pipe", "pipe", "ignore"],
     });
     child.unref();
-    child.stdin.unref();
-    child.stdout.unref();
+    unrefIfPresent(child.stdin);
+    unrefIfPresent(child.stdout);
     child.once("error", () => {
       child.kill("SIGKILL");
     });
@@ -183,6 +183,16 @@ function waitFirstByteAsync(stream: Readable): Promise<void> {
     stream.once("end", onEnd);
     stream.resume();
   });
+}
+
+function hasUnref(stream: object): stream is { unref: () => void } {
+  return "unref" in stream && typeof stream.unref === "function";
+}
+
+function unrefIfPresent(stream: object): void {
+  if (hasUnref(stream)) {
+    stream.unref();
+  }
 }
 
 function sleepAsync(ms: number): Promise<void> {
