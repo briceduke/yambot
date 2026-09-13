@@ -537,3 +537,79 @@ durations. One-video resolve still uses `basic_info.duration`.
 `packages/audio-engine` YouTube playlist mapping.
 
 **Tags:** platform
+
+---
+
+## Context
+
+Offline `skip_ms` timed `skipCurrent` immediately after `enqueue`.
+
+## Problem
+
+Prefetch of the next open had not finished, so skip still waited for
+`openTrackAudio`. The bench looked like a no-op even when skip seconds
+later (the usual case) was fast.
+
+## Rule
+
+When measuring prefetch, wait until the next open has finished, then
+time skip. Immediate skip after enqueue is a different scenario; label
+it if you measure it.
+
+## Applies to
+
+Playback benches and skip-path tests.
+
+**Tags:** process, product
+
+---
+
+## Context
+
+R3 forbids Java in the product. A bake-off still needs Lavalink numbers.
+
+## Problem
+
+Agents either skip the bake-off or add Java to `bun test` / CI.
+
+## Rule
+
+Java may live only in an opt-in harness (`scripts/bench-lavalink`,
+`bun run bench:vs-lavalink`). Default tests and GitHub Actions must
+never exec `java`. Lavalink `TrackStartEvent` works without Discord
+voice for HTTP fixtures. Cap live `loadtracks` with a timeout. Start
+many Lavalink players in small batches; N=100 all-at-once hangs.
+
+## Applies to
+
+Perf bake-offs, load benches, and constitution R3 wording.
+
+**Tags:** process, product
+
+---
+
+## Context
+
+HTTP mpeg TTFA/skip lost to Lavalink TrackStart (~2.7 / 3.7 ms).
+
+## Problem
+
+PATH ffmpeg via `StreamType.Arbitrary` plus `AudioPlayer.stop()` default
+silence padding (5 × 20 ms) made skip ~170 ms. Pausing remux stdout
+after the first byte left Playing waiting on a webm cluster (~60 ms).
+`Writable`/`Readable` do not declare `unref`; tsc failed CI. Scale N=100
+survivor p50 looked faster than a 0-fail yambot run.
+
+## Rule
+
+Remux HTTP mpeg to webm/opus at open and wait for a playable prefix
+before play. Skip plays the next resource immediately (`stop(true)` /
+no Idle wait). Call `unref` only behind a type guard. A scale side with
+fail_rate ≥ 5% did not finish N. Do not treat CI `tsc` stream types as
+Node `Socket`.
+
+## Applies to
+
+HTTP open/play, skip, bake-off winner rows, and engine remux workers.
+
+**Tags:** product, platform

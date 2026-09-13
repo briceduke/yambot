@@ -1,3 +1,4 @@
+import { remuxHttpMpegToWebmAsync } from "./http-remux.ts";
 import { TrackResolveError, type ResolveResult, type Track, type TrackAudio } from "./track.ts";
 import {
   getDefaultHttpStreamClient,
@@ -145,11 +146,12 @@ export async function resolveTrack(
 export async function openTrackAudio(input: {
   readonly track: Track;
 }): Promise<TrackAudio> {
-  return openTrackAudioWithClients(input, {
+  const audio: TrackAudio = await openTrackAudioWithClients(input, {
     youtube: await getDefaultYoutubeClientAsync(),
     soundcloud: getDefaultSoundCloudClient(),
     http: getDefaultHttpStreamClient(),
   });
+  return remuxHttpMpegToWebmAsync(audio);
 }
 
 function pickSourceForUri(uri: string): "youtube" | "soundcloud" | "http" {
