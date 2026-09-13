@@ -111,6 +111,8 @@ export class GuildMusicSession {
   #announce: ((text: string) => Promise<void>) | undefined;
   #ignoreIdle = false;
   #cancelIdleLeave: (() => void) | undefined;
+  #prefetch: { readonly uri: string; readonly promise: Promise<TrackAudio> } | null =
+    null;
 
   constructor(input: CreateSessionInput) {
     this.engine = input.engine;
@@ -144,15 +146,19 @@ export class GuildMusicSession {
 
   /**
    * Opens audio and plays immediately. First-track open failure throws and
-   * does not set current or enqueue.
+   * does not set current or enqueue. `preparedAudio` skips a second open
+   * when the play door already started it.
    * @param track - Track to play now.
+   * @param preparedAudio - Optional stream from an overlapping open.
    */
-  async playNow(track: Track): Promise<void> {
-    const audio: TrackAudio = await openOrWrapAsync(this.engine, track);
+  async playNow(track: Track, preparedAudio?: TrackAudio): Promise<void> {
+    const audio: TrackAudio =
+      preparedAudio ?? (await this.#takePrefetchOrOpenAsync(track));
     this.#cancelScheduledIdleLeave();
     this.#ignoreIdle = false;
     await this.#voice.play(audio);
     this.#currentTrack = track;
+    this.#startPrefetch();
   }
 
   /**
@@ -162,11 +168,14 @@ export class GuildMusicSession {
    */
   enqueue(track: Track): number {
     this.#queue.enqueue(track);
+    this.#startPrefetch();
     return this.#queue.size + 1;
   }
 
   /**
-   * Stops the player. Returns the skipped track, or `null` if nothing is current.
+   * Skips the current track. Plays the next queued track immediately
+   * (does not wait for player Idle / silence padding). Last-track skip
+   * stops the player and starts the idle-leave timer.
    * @returns The skipped track, or `null`.
    */
   skipCurrent(): Track | null {
@@ -174,7 +183,14 @@ export class GuildMusicSession {
     if (skipped === null) {
       return null;
     }
-    this.#voice.stop();
+    const next: Track | null = this.#queue.dequeueNext();
+    if (next === null) {
+      this.#stopBecauseQueueEmpty();
+      return skipped;
+    }
+    this.#ignoreIdle = true;
+    this.#cancelScheduledIdleLeave();
+    void this.#playSkippedNextAsync(next);
     return skipped;
   }
 
@@ -268,7 +284,9 @@ export class GuildMusicSession {
    * @returns The removed track, or `null` if the index is out of range.
    */
   removeUpcomingAt(index: number): Track | null {
-    return this.#queue.removeAt(index);
+    const removed: Track | null = this.#queue.removeAt(index);
+    this.#refreshPrefetch();
+    return removed;
   }
 
   /**
@@ -276,6 +294,7 @@ export class GuildMusicSession {
    */
   shuffleUpcoming(): void {
     this.#queue.shuffle();
+    this.#refreshPrefetch();
   }
 
   /**
@@ -285,6 +304,7 @@ export class GuildMusicSession {
   clearUpcoming(): number {
     const size: number = this.#queue.size;
     this.#queue.clear();
+    this.#abandonPrefetch();
     return size;
   }
 
@@ -301,6 +321,7 @@ export class GuildMusicSession {
    */
   leaveNow(): void {
     this.#cancelScheduledIdleLeave();
+    this.#abandonPrefetch();
     sessions.delete(this.#guildId);
     this.#voice.stop();
     this.#voice.destroy();
@@ -319,6 +340,7 @@ export class GuildMusicSession {
       return;
     }
     this.#cancelScheduledIdleLeave();
+    this.#abandonPrefetch();
     this.#ignoreIdle = true;
     this.#voice.stop();
     this.#currentTrack = null;
@@ -332,6 +354,25 @@ export class GuildMusicSession {
       return;
     }
     await this.#playNextFromQueueAsync();
+  }
+
+  async #playSkippedNextAsync(track: Track): Promise<void> {
+    const played: boolean = await this.#tryPlayNextAsync(track);
+    this.#ignoreIdle = false;
+    if (!played) {
+      await this.#playNextFromQueueAsync();
+    }
+  }
+
+  #stopBecauseQueueEmpty(): void {
+    this.#ignoreIdle = true;
+    this.#currentTrack = null;
+    this.#abandonPrefetch();
+    this.#voice.stop();
+    this.#ignoreIdle = false;
+    if (this.#voice.getChannelId() !== null) {
+      this.#armIdleLeave();
+    }
   }
 
   async #playNextFromQueueAsync(): Promise<void> {
@@ -352,9 +393,10 @@ export class GuildMusicSession {
 
   async #tryPlayNextAsync(track: Track): Promise<boolean> {
     try {
-      const audio: TrackAudio = await openOrWrapAsync(this.engine, track);
+      const audio: TrackAudio = await this.#takePrefetchOrOpenAsync(track);
       await this.#voice.play(audio);
       this.#currentTrack = track;
+      this.#startPrefetch();
       await this.#sendAnnounceAsync(nowPlayingText(track));
       return true;
     } catch {
@@ -383,6 +425,60 @@ export class GuildMusicSession {
     }
     this.#cancelIdleLeave();
     this.#cancelIdleLeave = undefined;
+  }
+
+  #startPrefetch(): void {
+    if (this.#currentTrack === null) {
+      return;
+    }
+    const next: Track | null = this.#queue.peek();
+    if (next === null) {
+      return;
+    }
+    if (this.#prefetch?.uri === next.uri) {
+      return;
+    }
+    this.#abandonPrefetch();
+    this.#prefetch = {
+      uri: next.uri,
+      promise: this.engine.openTrackAudio({ track: next }),
+    };
+  }
+
+  #refreshPrefetch(): void {
+    const next: Track | null = this.#queue.peek();
+    if (next === null) {
+      this.#abandonPrefetch();
+      return;
+    }
+    if (this.#prefetch?.uri === next.uri) {
+      return;
+    }
+    this.#abandonPrefetch();
+    this.#startPrefetch();
+  }
+
+  #abandonPrefetch(): void {
+    const prefetch = this.#prefetch;
+    this.#prefetch = null;
+    if (prefetch === null) {
+      return;
+    }
+    void prefetch.promise
+      .then((audio) => {
+        void audio.stream.cancel();
+      })
+      .catch(() => {});
+  }
+
+  async #takePrefetchOrOpenAsync(track: Track): Promise<TrackAudio> {
+    const prefetch = this.#prefetch;
+    if (prefetch !== null && prefetch.uri === track.uri) {
+      this.#prefetch = null;
+      return prefetch.promise;
+    }
+    this.#abandonPrefetch();
+    return openOrWrapAsync(this.engine, track);
   }
 }
 

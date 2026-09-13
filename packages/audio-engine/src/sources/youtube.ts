@@ -157,6 +157,18 @@ export async function getDefaultYoutubeClientAsync(): Promise<YoutubeClient> {
 }
 
 /**
+ * Wraps an InnerTube session as the injectable YouTube client.
+ * Used by the default client and the offline perf bench.
+ * @param innertube - youtubei.js InnerTube instance (or a test double).
+ * @returns YoutubeClient seam.
+ */
+export function createYoutubeClientFromInnertube(
+  innertube: Innertube,
+): YoutubeClient {
+  return wrapInnertube(innertube);
+}
+
+/**
  * Maps youtubei.js playlist page items (`PlaylistVideo`, `LockupView`,
  * and similar) to videos. Throws when items exist but none have a video id.
  * @param items - Raw `page.items` entries from youtubei.js.
@@ -179,13 +191,56 @@ export function playlistVideosFromItems(
 }
 
 function wrapInnertube(innertube: Innertube): YoutubeClient {
+  const mediaByVideoId: Map<string, YoutubeMediaInfo> = new Map();
   return {
-    getVideo: (videoId) => getVideoFromInnertubeAsync(innertube, videoId),
+    getVideo: (videoId) => getVideoFromInnertubeAsync(innertube, videoId, mediaByVideoId),
     getPlaylist: (playlistId) =>
       getPlaylistFromInnertubeAsync(innertube, playlistId),
     searchFirstVideoId: (query) => searchFirstVideoIdAsync(innertube, query),
-    openAudioWebm: (videoId) => openAudioWebmAsync(innertube, videoId),
+    openAudioWebm: (videoId) =>
+      openAudioWebmAsync(innertube, videoId, mediaByVideoId),
   };
+}
+
+interface YoutubeMediaInfo {
+  readonly basic_info: {
+    readonly title?: string | undefined;
+    readonly duration?: number | undefined;
+    readonly id?: string | undefined;
+  };
+  readonly playability_status?: { readonly status?: string | undefined };
+  chooseFormat: (options: typeof AUDIO_WEBM_OPUS) => unknown;
+  download: (
+    options: typeof AUDIO_WEBM_OPUS,
+  ) => Promise<ReadableStream<Uint8Array>>;
+}
+
+const MEDIA_CACHE_LIMIT = 32;
+
+function storeMediaInfo(
+  mediaByVideoId: Map<string, YoutubeMediaInfo>,
+  videoId: string,
+  media: YoutubeMediaInfo,
+): void {
+  if (mediaByVideoId.size >= MEDIA_CACHE_LIMIT) {
+    const oldest: string | undefined = mediaByVideoId.keys().next().value;
+    if (oldest !== undefined) {
+      mediaByVideoId.delete(oldest);
+    }
+  }
+  mediaByVideoId.set(videoId, media);
+}
+
+function takeMediaInfo(
+  mediaByVideoId: Map<string, YoutubeMediaInfo>,
+  videoId: string,
+): YoutubeMediaInfo | undefined {
+  const media: YoutubeMediaInfo | undefined = mediaByVideoId.get(videoId);
+  if (media === undefined) {
+    return undefined;
+  }
+  mediaByVideoId.delete(videoId);
+  return media;
 }
 
 async function getPlaylistFromInnertubeAsync(
@@ -214,7 +269,7 @@ async function collectPlaylistVideosAsync(
   const videos: YoutubePlaylistVideo[] = [];
   while (true) {
     videos.push(...playlistVideosFromItems(page.items));
-    if (countPlayable(videos) > MAX_PLAYLIST_TRACKS || !page.has_continuation) {
+    if (countPlayable(videos) >= MAX_PLAYLIST_TRACKS || !page.has_continuation) {
       break;
     }
     page = await page.getContinuation();
@@ -531,6 +586,7 @@ async function resolvePlaylistAsync(
 async function getVideoFromInnertubeAsync(
   innertube: Innertube,
   videoId: string,
+  mediaByVideoId: Map<string, YoutubeMediaInfo>,
 ): Promise<{
   readonly title: string;
   readonly durationSeconds: number;
@@ -538,12 +594,13 @@ async function getVideoFromInnertubeAsync(
   readonly hasWebmOpus: boolean;
 }> {
   try {
-    const info = await innertube.getInfo(videoId, {
+    const info: YoutubeMediaInfo = await innertube.getBasicInfo(videoId, {
       client: AUDIO_WEBM_OPUS.client,
     });
     if (isUnplayable(info.playability_status?.status)) {
       throw new TrackResolveError(PLAY_FAILED);
     }
+    storeMediaInfo(mediaByVideoId, videoId, info);
     return {
       title: info.basic_info.title ?? "",
       durationSeconds: info.basic_info.duration ?? 0,
@@ -578,8 +635,16 @@ async function searchFirstVideoIdAsync(
 async function openAudioWebmAsync(
   innertube: Innertube,
   videoId: string,
+  mediaByVideoId: Map<string, YoutubeMediaInfo>,
 ): Promise<ReadableStream<Uint8Array>> {
   try {
+    const cached: YoutubeMediaInfo | undefined = takeMediaInfo(
+      mediaByVideoId,
+      videoId,
+    );
+    if (cached !== undefined) {
+      return await cached.download(AUDIO_WEBM_OPUS);
+    }
     return await innertube.download(videoId, AUDIO_WEBM_OPUS);
   } catch (error) {
     throw toResolveError(error);

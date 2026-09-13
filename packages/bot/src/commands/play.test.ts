@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { TrackResolveError, type ResolveResult, type Track } from "@yambot/audio-engine";
+import { TrackResolveError, type ResolveResult, type Track, type TrackAudio } from "@yambot/audio-engine";
 
 import type { CommandContext } from "../command-context.ts";
 import type { EnginePort, GuildMusicSession } from "../guild-music-session.ts";
@@ -255,6 +255,22 @@ describe("executePlay", () => {
     expect(session.unpauseCalls).toBe(0);
     expect(session.isPaused()).toBe(true);
   });
+
+  test("overlaps join and resolve when both are slow", async () => {
+    const session = new FakeSession();
+    session.joinDelayMs = 40;
+    session.resolveDelayMs = 40;
+    session.resolvedTrack = sampleTrack("Never Gonna Give You Up", 213);
+    const ctx = createContext({
+      args: "never gonna give you up",
+      invokerVoiceChannelId: "voice-1",
+    });
+    const startedAt: number = performance.now();
+    await executePlay(ctx, session.asGuildSession());
+    const elapsed: number = performance.now() - startedAt;
+    expect(ctx.replies).toEqual(["Playing: Never Gonna Give You Up (3:33)"]);
+    expect(elapsed).toBeLessThan(70);
+  });
 });
 
 class FakeContext implements CommandContext {
@@ -285,6 +301,8 @@ class FakeSession {
   paused = false;
   unpauseCalls = 0;
   voiceChannelName = "music";
+  joinDelayMs = 0;
+  resolveDelayMs = 0;
   occupied = false;
   enqueuePosition = 2;
   resolvedTrack: Track = sampleTrack("Song", 213);
@@ -301,6 +319,9 @@ class FakeSession {
       readonly source?: "soundcloud";
     }): Promise<ResolveResult> => {
       this.resolveInputs.push(input);
+      if (this.resolveDelayMs > 0) {
+        await sleepAsync(this.resolveDelayMs);
+      }
       if (this.resolveError !== null) {
         throw this.resolveError;
       }
@@ -313,8 +334,8 @@ class FakeSession {
         truncated: false,
       };
     },
-    openTrackAudio: async (): Promise<never> => {
-      throw new Error("openTrackAudio is not used by play tests");
+    openTrackAudio: async (): Promise<TrackAudio> => {
+      return { stream: emptyStream(), format: "webm/opus" };
     },
   };
 
@@ -324,6 +345,9 @@ class FakeSession {
 
   async joinInvoker(channelId: string): Promise<void> {
     this.joinChannelIds.push(channelId);
+    if (this.joinDelayMs > 0) {
+      await sleepAsync(this.joinDelayMs);
+    }
   }
 
   async playNow(track: Track): Promise<void> {
@@ -374,4 +398,18 @@ function playlistResult(
   tracks: readonly Track[],
 ): ResolveResult {
   return { tracks, playlistTitle: title, truncated: false };
+}
+
+function emptyStream(): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      controller.close();
+    },
+  });
+}
+
+function sleepAsync(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
 }

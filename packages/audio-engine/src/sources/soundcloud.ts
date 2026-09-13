@@ -143,13 +143,14 @@ export function getDefaultSoundCloudClient(): SoundCloudClient {
 }
 
 function wrapSoundcloudLibrary(soundcloud: Soundcloud): SoundCloudClient {
+  const rawByUrl: Map<string, SoundcloudTrack> = new Map();
   return {
-    getTrack: (url) => getTrackFromLibraryAsync(soundcloud, url),
+    getTrack: (url) => getTrackFromLibraryAsync(soundcloud, url, rawByUrl),
     getPlaylist: (url) => getPlaylistFromLibraryAsync(soundcloud, url),
     searchFirstTrackUrl: (query) =>
       searchFirstTrackUrlAsync(soundcloud, query),
     openHlsAudio: (permalinkUrl) =>
-      openHlsAudioFromLibraryAsync(soundcloud, permalinkUrl),
+      openHlsAudioFromLibraryAsync(soundcloud, permalinkUrl, rawByUrl),
   };
 }
 
@@ -180,6 +181,7 @@ async function getPlaylistFromLibraryAsync(
 async function getTrackFromLibraryAsync(
   soundcloud: Soundcloud,
   url: string,
+  rawByUrl: Map<string, SoundcloudTrack>,
 ): Promise<{
   readonly title: string;
   readonly durationSeconds: number;
@@ -189,6 +191,8 @@ async function getTrackFromLibraryAsync(
 }> {
   try {
     const apiTrack: SoundcloudTrack = await soundcloud.tracks.get(url);
+    rawByUrl.set(url, apiTrack);
+    rawByUrl.set(apiTrack.permalink_url, apiTrack);
     return {
       title: apiTrack.title ?? "",
       durationSeconds: durationSecondsFromMs(apiTrack.duration),
@@ -224,9 +228,14 @@ async function searchFirstTrackUrlAsync(
 async function openHlsAudioFromLibraryAsync(
   soundcloud: Soundcloud,
   permalinkUrl: string,
+  rawByUrl: Map<string, SoundcloudTrack>,
 ): Promise<ReadableStream<Uint8Array>> {
   try {
-    const apiTrack: SoundcloudTrack = await soundcloud.tracks.get(permalinkUrl);
+    const apiTrack: SoundcloudTrack = await readOrFetchTrackAsync(
+      soundcloud,
+      permalinkUrl,
+      rawByUrl,
+    );
     const transcoding: SoundcloudTranscoding | null =
       pickHlsTranscoding(apiTrack);
     if (transcoding === null) {
@@ -248,6 +257,19 @@ async function openHlsAudioFromLibraryAsync(
   } catch (error) {
     throw toResolveError(error);
   }
+}
+
+async function readOrFetchTrackAsync(
+  soundcloud: Soundcloud,
+  permalinkUrl: string,
+  rawByUrl: Map<string, SoundcloudTrack>,
+): Promise<SoundcloudTrack> {
+  const cached: SoundcloudTrack | undefined = rawByUrl.get(permalinkUrl);
+  if (cached !== undefined) {
+    rawByUrl.delete(permalinkUrl);
+    return cached;
+  }
+  return soundcloud.tracks.get(permalinkUrl);
 }
 
 async function resolvePlaylistUrlAsync(
@@ -293,23 +315,39 @@ function createHlsSegmentStream(
   segmentUrls: readonly string[],
   headers: { readonly [key: string]: string },
 ): ReadableStream<Uint8Array> {
+  let index = 0;
   return new ReadableStream({
-    async start(controller) {
-      try {
-        for (const segmentUrl of segmentUrls) {
-          const response: Response = await fetch(segmentUrl, { headers });
-          if (!response.ok) {
-            throw new TrackResolveError(NO_PLAYABLE_AUDIO);
-          }
-          const body: Uint8Array = new Uint8Array(await response.arrayBuffer());
-          controller.enqueue(body);
-        }
+    async pull(controller) {
+      const segmentUrl: string | undefined = segmentUrls[index];
+      if (segmentUrl === undefined) {
         controller.close();
-      } catch (error) {
-        controller.error(toResolveError(error));
+        return;
       }
+      index += 1;
+      await enqueueSegmentAsync(controller, segmentUrl, headers);
     },
   });
+}
+
+async function enqueueSegmentAsync(
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  segmentUrl: string,
+  headers: { readonly [key: string]: string },
+): Promise<void> {
+  const response: Response = await fetch(segmentUrl, { headers });
+  if (!response.ok || response.body === null) {
+    throw new TrackResolveError(NO_PLAYABLE_AUDIO);
+  }
+  const reader = response.body.getReader();
+  while (true) {
+    const read = await reader.read();
+    if (read.done) {
+      return;
+    }
+    if (read.value !== undefined) {
+      controller.enqueue(read.value);
+    }
+  }
 }
 
 function parseM3u8SegmentUrls(playlistText: string): readonly string[] {

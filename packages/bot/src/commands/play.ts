@@ -2,6 +2,7 @@ import {
   TrackResolveError,
   type ResolveResult,
   type Track,
+  type TrackAudio,
 } from "@yambot/audio-engine";
 import { SlashCommandBuilder } from "discord.js";
 
@@ -47,15 +48,13 @@ export async function executePlay(
   if (voiceChannelId === null) {
     return;
   }
-  const didJoin: boolean = await joinOrReplyAsync(ctx, session, voiceChannelId);
-  if (!didJoin) {
-    return;
-  }
+  const joinPromise: Promise<void> = session.joinInvoker(voiceChannelId);
   const result: ResolveResult | null = await resolveOrReplyAsync(ctx, session);
   if (result === null) {
+    void joinPromise.catch(() => {});
     return;
   }
-  await playOrQueueAsync(ctx, session, result);
+  await playOrQueueAsync(ctx, session, result, joinPromise);
 }
 
 async function readVoiceChannelIdOrReplyAsync(
@@ -78,20 +77,6 @@ async function readVoiceChannelIdOrReplyAsync(
   return voiceChannelId;
 }
 
-async function joinOrReplyAsync(
-  ctx: CommandContext,
-  session: GuildMusicSession,
-  channelId: string,
-): Promise<boolean> {
-  try {
-    await session.joinInvoker(channelId);
-    return true;
-  } catch (error) {
-    await ctx.reply(`Couldn't join voice: ${errorMessage(error)}`);
-    return false;
-  }
-}
-
 async function resolveOrReplyAsync(
   ctx: CommandContext,
   session: GuildMusicSession,
@@ -112,17 +97,73 @@ async function playOrQueueAsync(
   ctx: CommandContext,
   session: GuildMusicSession,
   result: ResolveResult,
+  joinPromise: Promise<void>,
 ): Promise<void> {
   const first: Track | undefined = result.tracks[0];
   if (first === undefined) {
+    await awaitJoinOrReplyAsync(ctx, joinPromise);
     await ctx.reply(PLAYLIST_EMPTY_REPLY);
     return;
   }
   if (session.currentTrack !== null) {
+    const joined: boolean = await awaitJoinOrReplyAsync(ctx, joinPromise);
+    if (!joined) {
+      return;
+    }
     await enqueueWhileCurrentAsync(ctx, session, result, first);
     return;
   }
-  await playFirstThenQueueRestAsync(ctx, session, result, first);
+  await playFirstOverlappingJoinAsync(ctx, session, result, first, joinPromise);
+}
+
+async function playFirstOverlappingJoinAsync(
+  ctx: CommandContext,
+  session: GuildMusicSession,
+  result: ResolveResult,
+  first: Track,
+  joinPromise: Promise<void>,
+): Promise<void> {
+  const openPromise: Promise<TrackAudio> = session.engine.openTrackAudio({
+    track: first,
+  });
+  const joined: boolean = await awaitJoinOrReplyAsync(
+    ctx,
+    joinPromise,
+    openPromise,
+  );
+  if (!joined) {
+    return;
+  }
+  try {
+    const audio: TrackAudio = await openPromise;
+    await session.playNow(first, audio);
+  } catch (error) {
+    await ctx.reply(errorMessage(error));
+    return;
+  }
+  enqueueTracks(session, result.tracks.slice(1));
+  await ctx.reply(playingOrAddedReply(result, first));
+}
+
+async function awaitJoinOrReplyAsync(
+  ctx: CommandContext,
+  joinPromise: Promise<void>,
+  openPromise?: Promise<TrackAudio>,
+): Promise<boolean> {
+  try {
+    await joinPromise;
+    return true;
+  } catch (error) {
+    if (openPromise !== undefined) {
+      void openPromise
+        .then((audio) => {
+          void audio.stream.cancel();
+        })
+        .catch(() => {});
+    }
+    await ctx.reply(`Couldn't join voice: ${errorMessage(error)}`);
+    return false;
+  }
 }
 
 async function enqueueWhileCurrentAsync(
@@ -138,22 +179,6 @@ async function enqueueWhileCurrentAsync(
   }
   enqueueTracks(session, result.tracks);
   await ctx.reply(addedReply(result));
-}
-
-async function playFirstThenQueueRestAsync(
-  ctx: CommandContext,
-  session: GuildMusicSession,
-  result: ResolveResult,
-  first: Track,
-): Promise<void> {
-  try {
-    await session.playNow(first);
-  } catch (error) {
-    await ctx.reply(errorMessage(error));
-    return;
-  }
-  enqueueTracks(session, result.tracks.slice(1));
-  await ctx.reply(playingOrAddedReply(result, first));
 }
 
 function enqueueTracks(
