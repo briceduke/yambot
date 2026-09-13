@@ -2,6 +2,34 @@
 
 Discord music bot. Play YouTube audio in a voice channel. No Java.
 
+## Performance
+
+yambot plays in one Node process. No JVM, no Lavalink sidecar. YouTube
+audio stays webm/opus and does not spawn ffmpeg. Play and skip are
+fast. On this VM, 100 headless guild sessions stay at 0 fail; Lavalink
+timed out on about 80% of players at N=100.
+
+Same-machine bake-off vs Lavalink 4.2.2 (local HTTP fixture, n=10).
+Method, caveats, and full tables: `PERF.md`.
+
+| What | yambot | Lavalink | Winner |
+|------|-------:|---------:|--------|
+| HTTP load p50 | 0.007 ms | 2.2 ms | yambot |
+| RSS / CPU | 125 MB / 1.9% | 316 MB / 3.5% | yambot |
+| HTTP first frame / skip p50 | 51 / 170 ms | 2.7 / 3.7 ms | Lavalink (in-process decode vs PATH ffmpeg) |
+| Scale TTFA p50 at N=10 / 50 | 2.8 / 11 ms | 19 / 48 ms | yambot |
+| Scale N=100 | 100/100 play, 0 fail | ~20/100 TrackStart, ~80% timeout | yambot |
+| Live YouTube hear-audio | — | — | can't tell yet |
+
+Cuts on this branch (injected bench vs itself): resolve-then-open
+**−50%**, play-to-current **−31%**, skip with prefetch **−98%**.
+
+```
+bun run bench:perf          # Java-free; CI-safe
+bun run bench:load          # N-session scale (no Java)
+bun run bench:vs-lavalink   # opt-in JDK; not required to run the bot
+```
+
 ## Need
 
 - Node 24 or newer (bot process)
@@ -34,20 +62,9 @@ Slash commands `/play`, `/scsearch`, `/skip`, `/queue`, `/pause`, `/resume`, `/n
 
 ## Playback benches
 
-`bun run bench:perf` prints JSON and a markdown table. Injected source
-clients and a mocked voice port. No Java, no Discord token, no live
-YouTube. Optional `--n 10` sets repeats (default 10).
-
-`bun run bench:load` is a headless N-session scale sweep (default
-webm/opus fixtures, N = 1, 10, 50, 100). Not in CI. `--mode mock` is
-the Java-free subset used by unit tests. `--mode http` uses real HTTP
-resolve/open and PATH ffmpeg.
-
-`bun run bench:vs-lavalink` is **opt-in**. It needs a JDK 17+, downloads
-a pinned Lavalink jar, and prints a yambot vs Lavalink winner table.
-Never run from CI. See `scripts/bench-lavalink/README.md`.
-
-Numbers and the winner table live in `PERF.md`.
+See **Performance** above. Flags and methodology live in `PERF.md`.
+`bench:vs-lavalink` needs a JDK; see `scripts/bench-lavalink/README.md`.
+Never run it from CI.
 
 ## Commands
 
