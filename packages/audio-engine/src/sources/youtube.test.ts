@@ -1,7 +1,9 @@
+import { Innertube } from "youtubei.js";
 import { describe, expect, test } from "bun:test";
 
 import { TrackResolveError } from "../track.ts";
 import {
+  createYoutubeClientFromInnertube,
   openTrackAudioWithClient,
   parseYoutubeQuery,
   playlistVideosFromItems,
@@ -458,5 +460,94 @@ describe("openTrackAudioWithClient", () => {
     );
     expect(audio.format).toBe("webm/opus");
     expect(audio.stream).toBe(stream);
+  });
+});
+
+describe("createYoutubeClientFromInnertube", () => {
+  test("resolve then open uses getBasicInfo once and cached download", async () => {
+    const calls: string[] = [];
+    const stream = createFakeStream();
+    const media = {
+      basic_info: {
+        title: "Never Gonna Give You Up",
+        duration: 213,
+        id: VIDEO_ID,
+      },
+      playability_status: { status: "OK" },
+      chooseFormat: () => ({}),
+      download: async () => stream,
+    };
+    const fake = {
+      async getInfo(videoId: string) {
+        calls.push(`getInfo:${videoId}`);
+        return media;
+      },
+      async getBasicInfo(videoId: string) {
+        calls.push(`getBasicInfo:${videoId}`);
+        return media;
+      },
+      async download(videoId: string) {
+        calls.push(`download:${videoId}`);
+        return stream;
+      },
+      async search() {
+        return { videos: [] };
+      },
+      async getPlaylist() {
+        return { info: { title: "" }, items: [], has_continuation: false };
+      },
+    };
+    const client = createYoutubeClientFromInnertube(
+      fake as unknown as Innertube,
+    );
+    const resolved = await resolveTrackWithClient({ query: WATCH_URL }, client);
+    const track = resolved.tracks[0];
+    expect(track?.uri).toBe(WATCH_URL);
+    if (track === undefined) {
+      throw new Error("expected a track");
+    }
+    const audio = await openTrackAudioWithClient({ track }, client);
+    expect(audio.format).toBe("webm/opus");
+    expect(calls).toEqual([`getBasicInfo:${VIDEO_ID}`]);
+  });
+
+  test("open without a prior resolve uses download", async () => {
+    const calls: string[] = [];
+    const stream = createFakeStream();
+    const fake = {
+      async getInfo() {
+        calls.push("getInfo");
+        return {};
+      },
+      async getBasicInfo() {
+        calls.push("getBasicInfo");
+        return {};
+      },
+      async download(videoId: string) {
+        calls.push(`download:${videoId}`);
+        return stream;
+      },
+      async search() {
+        return { videos: [] };
+      },
+      async getPlaylist() {
+        return { info: { title: "" }, items: [], has_continuation: false };
+      },
+    };
+    const client = createYoutubeClientFromInnertube(
+      fake as unknown as Innertube,
+    );
+    const audio = await openTrackAudioWithClient(
+      {
+        track: {
+          title: "Never Gonna Give You Up",
+          uri: WATCH_URL,
+          durationSeconds: 213,
+        },
+      },
+      client,
+    );
+    expect(audio.stream).toBe(stream);
+    expect(calls).toEqual([`download:${VIDEO_ID}`]);
   });
 });

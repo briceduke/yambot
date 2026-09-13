@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { TrackResolveError, type ResolveResult, type Track } from "@yambot/audio-engine";
+import {
+  TrackResolveError,
+  type ResolveResult,
+  type Track,
+  type TrackAudio,
+} from "@yambot/audio-engine";
 
 import type { CommandContext } from "../command-context.ts";
 import type { EnginePort, GuildMusicSession } from "../guild-music-session.ts";
@@ -246,8 +251,15 @@ class FakeSession {
         truncated: false,
       };
     },
-    openTrackAudio: async (): Promise<never> => {
-      throw new Error("openTrackAudio is not used by scsearch tests");
+    openTrackAudio: async (): Promise<TrackAudio> => {
+      return {
+        stream: new ReadableStream({
+          start(controller) {
+            controller.close();
+          },
+        }),
+        format: "webm/opus",
+      };
     },
   };
 

@@ -537,3 +537,27 @@ durations. One-video resolve still uses `basic_info.duration`.
 `packages/audio-engine` YouTube playlist mapping.
 
 **Tags:** platform
+
+---
+
+## Context
+
+Offline `skip_ms` timed `skipCurrent` immediately after `enqueue`.
+
+## Problem
+
+Prefetch of the next open had not finished, so skip still waited for
+`openTrackAudio`. The bench looked like a no-op even when skip seconds
+later (the usual case) was fast.
+
+## Rule
+
+When measuring prefetch, wait until the next open has finished, then
+time skip. Immediate skip after enqueue is a different scenario; label
+it if you measure it.
+
+## Applies to
+
+Playback benches and skip-path tests.
+
+**Tags:** process, product

@@ -63,6 +63,7 @@ Run these to prove health. The per-change-type ladder lives in Constitution §5.
 | Engine seam (R1/R2) | `bun run checks` (`engine-seam`) | Before commit; CI |
 | Typecheck | `bun run typecheck` | Any TypeScript change |
 | Tests | `bun test` (scope to the touched package) | Any logic change |
+| Perf bench | `bun run bench:perf` | Playback / resolve / open / skip changes |
 | Human smoke | Play a track in the test guild; hear audio; skip works | Voice, extraction, or Discord-visible change |
 
 Add conformance or invariant scripts only when constitution invents a real rule — not empty scanners “for later.” The R1/R2 scan is `engine-seam` inside `bun run checks`.
