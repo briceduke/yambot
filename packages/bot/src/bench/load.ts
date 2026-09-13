@@ -1,10 +1,14 @@
 import {
-  openTrackAudio,
-  resolveTrack,
   type ResolveResult,
   type Track,
   type TrackAudio,
 } from "@yambot/audio-engine";
+import {
+  bytesToMb,
+  sleepAsync,
+  summarizeSamples,
+  type SampleSummary,
+} from "@yambot/audio-engine/bench";
 import { readFileSync } from "node:fs";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { Readable } from "node:stream";
@@ -16,19 +20,8 @@ import {
   type GuildMusicSession,
 } from "../guild-music-session.ts";
 import { HeadlessVoicePort } from "./headless-voice.ts";
-import {
-  MP3_ARGS,
-  OGG_OPUS_ARGS,
-  removeSineFixture,
-  WEBM_OPUS_ARGS,
-  writeSineFixture,
-  type SineFixture,
-} from "./sine-file.ts";
-import {
-  sleepAsync,
-  summarizeSamples,
-  type SampleSummary,
-} from "./stats.ts";
+import { removeSineFixture, WEBM_OPUS_ARGS, writeSineFixture, type SineFixture } from "./sine-file.ts";
+import { StubVoicePort } from "./stub-voice.ts";
 
 const DEFAULT_SESSION_COUNTS: readonly number[] = [1, 10, 50, 100];
 const DEFAULT_HOLD_MS = 2_000;
@@ -40,7 +33,7 @@ const LAG_CLIFF_MS = 250;
 const FAIL_CLIFF_RATE = 0.05;
 
 /** How the load bench plays audio. */
-export type LoadMode = "mock" | "webm" | "http";
+export type LoadMode = "mock" | "webm";
 
 /** Failures counted in one N point. */
 export interface LoadFailures {
@@ -102,10 +95,10 @@ export async function runLoadBench(
   const skipStorms: number = options.skipStorms ?? DEFAULT_SKIP_STORMS;
   const notes: string[] = [
     "Voice is headless (no Discord UDP). Audible send is unverifiable here.",
-    `Mode ${mode}: mock uses instant play; webm uses StreamType.WebmOpus; http remuxes mpeg to webm/opus in the engine.`,
+    `Mode ${mode}: mock uses instant play; webm uses StreamType.WebmOpus.`,
     "TTFA is playNow after join/resolve (same stage as Lavalink PATCH until TrackStart).",
   ];
-  const fixture = mode === "mock" ? null : await setupFixtureAsync(mode);
+  const fixture = mode === "mock" ? null : setupWebmFixture();
   if (mode !== "mock" && fixture === null) {
     return {
       command: "bun run bench:load",
@@ -137,9 +130,6 @@ export async function runLoadBench(
       }
     }
   } finally {
-    if (fixture?.kind === "http") {
-      fixture.server.stop();
-    }
     if (fixture !== null) {
       removeSineFixture(fixture.sine);
     }
@@ -267,7 +257,7 @@ async function startSessionAsync(
   try {
     await session.joinInvoker("voice-1");
     const resolved: ResolveResult = await session.engine.resolveTrack({
-      query: resolveQuery(input, index),
+      query: resolveQuery(),
     });
     const first: Track | undefined = resolved.tracks[0];
     if (first === undefined) {
@@ -335,29 +325,20 @@ function enqueueMany(session: GuildMusicSession, playUri: string, count: number)
 }
 
 function createEngine(input: MeasureInput): EnginePort {
-  if (input.mode === "mock") {
-    return new InstantEngine();
-  }
-  if (input.mode === "http" && input.fixture?.kind === "http") {
-    return new LiveHttpEngine();
-  }
-  if (input.fixture?.kind === "webm") {
-    return new FileEngine(input.fixture.bytes, "webm/opus");
+  if (input.mode === "webm" && input.fixture !== null) {
+    return new FileEngine(input.fixture.bytes);
   }
   return new InstantEngine();
 }
 
 function createVoice(mode: LoadMode): VoicePort {
   if (mode === "mock") {
-    return new InstantVoice();
+    return new StubVoicePort();
   }
   return new HeadlessVoicePort(true);
 }
 
-function resolveQuery(input: MeasureInput, index: number): string {
-  if (input.fixture?.kind === "http") {
-    return `${input.fixture.baseUrl}/a-${index}.mp3`;
-  }
+function resolveQuery(): string {
   return "https://bench.local/fixture.webm";
 }
 
@@ -405,10 +386,6 @@ function cpuPct(
   return Math.round((cpuMs / wallMs) * 10000) / 100;
 }
 
-function bytesToMb(bytes: number): number {
-  return Math.round((bytes / (1024 * 1024)) * 100) / 100;
-}
-
 function roundLagMs(nanoseconds: number): number {
   return Math.round((nanoseconds / 1e6) * 1000) / 1000;
 }
@@ -427,72 +404,28 @@ async function waitUntilAsync(
   return false;
 }
 
-type PreparedFixture =
-  | { readonly kind: "webm"; readonly sine: SineFixture; readonly bytes: Buffer }
-  | {
-      readonly kind: "http";
-      readonly sine: SineFixture;
-      readonly baseUrl: string;
-      readonly server: { stop: () => void };
-    };
+interface PreparedFixture {
+  readonly sine: SineFixture;
+  readonly bytes: Buffer;
+}
 
-async function setupFixtureAsync(
-  mode: "webm" | "http",
-): Promise<PreparedFixture | null> {
-  if (mode === "webm") {
-    const sine = writeSineFixture({
-      fileName: "sine.webm",
-      durationSeconds: 12,
-      extraArgs: WEBM_OPUS_ARGS,
-    });
-    if (sine === null) {
-      return null;
-    }
-    return { kind: "webm", sine, bytes: readFileSync(sine.path) };
-  }
-  const mp3 = writeSineFixture({
-    fileName: "sine.mp3",
+function setupWebmFixture(): PreparedFixture | null {
+  const sine = writeSineFixture({
+    fileName: "sine.webm",
     durationSeconds: 12,
-    extraArgs: MP3_ARGS,
+    extraArgs: WEBM_OPUS_ARGS,
   });
-  const sine =
-    mp3 ??
-    writeSineFixture({
-      fileName: "sine.opus",
-      durationSeconds: 12,
-      extraArgs: OGG_OPUS_ARGS,
-    });
   if (sine === null) {
     return null;
   }
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    async fetch() {
-      return new Response(Bun.file(sine.path), {
-        headers: {
-          "content-type": sine.path.endsWith(".mp3")
-            ? "audio/mpeg"
-            : "audio/opus",
-        },
-      });
-    },
-  });
-  return {
-    kind: "http",
-    sine,
-    baseUrl: `http://127.0.0.1:${server.port}`,
-    server,
-  };
+  return { sine, bytes: readFileSync(sine.path) };
 }
 
 class FileEngine implements EnginePort {
   readonly #bytes: Buffer;
-  readonly #format: TrackAudio["format"];
 
-  constructor(bytes: Buffer, format: TrackAudio["format"]) {
+  constructor(bytes: Buffer) {
     this.#bytes = bytes;
-    this.#format = format;
   }
 
   async resolveTrack(): Promise<ResolveResult> {
@@ -508,21 +441,8 @@ class FileEngine implements EnginePort {
       stream: Readable.toWeb(
         Readable.from(this.#bytes),
       ) as ReadableStream<Uint8Array>,
-      format: this.#format,
+      format: "webm/opus",
     };
-  }
-}
-
-class LiveHttpEngine implements EnginePort {
-  async resolveTrack(input: {
-    readonly query: string;
-    readonly source?: "soundcloud";
-  }): Promise<ResolveResult> {
-    return resolveTrack({ query: input.query });
-  }
-
-  async openTrackAudio(input: { readonly track: Track }): Promise<TrackAudio> {
-    return openTrackAudio(input);
   }
 }
 
@@ -537,59 +457,6 @@ class InstantEngine implements EnginePort {
 
   async openTrackAudio(): Promise<TrackAudio> {
     return { stream: immediateStream(), format: "webm/opus" };
-  }
-}
-
-class InstantVoice implements VoicePort {
-  #channelId: string | null = null;
-  #idleHandler: (() => void) | undefined;
-
-  async join(channelId: string): Promise<void> {
-    this.#channelId = channelId;
-  }
-
-  getChannelId(): string | null {
-    return this.#channelId;
-  }
-
-  getChannelName(): string {
-    return "bench";
-  }
-
-  async play(_audio: TrackAudio): Promise<void> {
-    return;
-  }
-
-  stop(): void {
-    this.#idleHandler?.();
-  }
-
-  pause(): boolean {
-    return false;
-  }
-
-  unpause(): boolean {
-    return false;
-  }
-
-  isPaused(): boolean {
-    return false;
-  }
-
-  playbackDurationMs(): number {
-    return 0;
-  }
-
-  destroy(): void {
-    this.#channelId = null;
-  }
-
-  onIdle(handler: () => void): void {
-    this.#idleHandler = handler;
-  }
-
-  onDisconnected(_handler: () => void): void {
-    return;
   }
 }
 

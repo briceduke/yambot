@@ -17,6 +17,7 @@ import {
   type YoutubeClient,
 } from "../sources/youtube.ts";
 import {
+  bytesToMb,
   sleepAsync,
   timeManyAsync,
   type SampleSummary,
@@ -360,8 +361,4 @@ function createImmediateStream(): ReadableStream<Uint8Array> {
       controller.close();
     },
   });
-}
-
-function bytesToMb(bytes: number): number {
-  return Math.round((bytes / (1024 * 1024)) * 100) / 100;
 }

@@ -7,15 +7,18 @@ import {
   type AudioPlayer,
 } from "@discordjs/voice";
 import {
-  TrackQueue,
   type ResolveResult,
   type Track,
   type TrackAudio,
 } from "@yambot/audio-engine";
-import { spawnSync } from "node:child_process";
-import { createReadStream, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  errorMessage,
+  sleepAsync,
+  summarizeSamples,
+  timeManyAsync,
+  type SampleSummary,
+} from "@yambot/audio-engine/bench";
+import { createReadStream } from "node:fs";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 
 import type { CommandContext } from "../command-context.ts";
@@ -25,20 +28,18 @@ import {
   createSession,
   dropSession,
   type EnginePort,
-  type VoicePort,
 } from "../guild-music-session.ts";
 import {
-  sleepAsync,
-  summarizeSamples,
-  timeManyAsync,
-  type SampleSummary,
-} from "./stats.ts";
+  removeSineFixture,
+  WEBM_OPUS_ARGS,
+  writeSineFixture,
+} from "./sine-file.ts";
+import { StubVoicePort } from "./stub-voice.ts";
 
 const JOIN_DELAY_MS = 40;
 const RESOLVE_DELAY_MS = 40;
 const OPEN_DELAY_MS = 50;
 const DEFAULT_N = 10;
-const PLAYLIST_SIZE = 1000;
 const WEBM_SECONDS = 2;
 
 export interface BotBenchReport {
@@ -46,7 +47,6 @@ export interface BotBenchReport {
   readonly n: number;
   readonly ttfa_ms: SampleSummary;
   readonly skip_ms: SampleSummary;
-  readonly playlist_enqueue_ms: SampleSummary;
   readonly cpu_pct: number | null;
   readonly event_loop_lag_ms: {
     readonly mean: number;
@@ -73,9 +73,6 @@ export async function runBotBench(
     await runTtfaOnceAsync();
   });
   const skip: SampleSummary = await timeSkipAsync(n);
-  const playlistEnqueue: SampleSummary = await timeManyAsync(n, async () => {
-    enqueuePlaylist(PLAYLIST_SIZE);
-  });
   const decode: DecodeMeasure = await measureDecodeAsync();
   if (decode.note !== undefined) {
     notes.push(decode.note);
@@ -85,7 +82,6 @@ export async function runBotBench(
     n,
     ttfa_ms: ttfa,
     skip_ms: skip,
-    playlist_enqueue_ms: playlistEnqueue,
     cpu_pct: decode.cpuPct,
     event_loop_lag_ms: decode.lag,
     notes,
@@ -94,9 +90,11 @@ export async function runBotBench(
 
 async function runTtfaOnceAsync(): Promise<void> {
   const guildId: string = uniqueGuildId("ttfa");
-  const voice = new DelayedVoice(JOIN_DELAY_MS);
-  const engine = new DelayedEngine(RESOLVE_DELAY_MS, OPEN_DELAY_MS);
-  const session = createSession({ guildId, engine, voice });
+  const session = createSession({
+    guildId,
+    engine: new DelayedEngine(RESOLVE_DELAY_MS, OPEN_DELAY_MS),
+    voice: new StubVoicePort(JOIN_DELAY_MS),
+  });
   const ctx = new BenchContext("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
   try {
     await executePlay(ctx, session);
@@ -118,9 +116,11 @@ async function timeSkipAsync(n: number): Promise<SampleSummary> {
 
 async function measureSkipOnceAsync(): Promise<number> {
   const guildId: string = uniqueGuildId("skip");
-  const voice = new DelayedVoice(0);
-  const engine = new DelayedEngine(0, OPEN_DELAY_MS);
-  const session = createSession({ guildId, engine, voice });
+  const session = createSession({
+    guildId,
+    engine: new DelayedEngine(0, OPEN_DELAY_MS),
+    voice: new StubVoicePort(),
+  });
   try {
     await session.joinInvoker("channel-a");
     await session.playNow(sampleTrack("one"));
@@ -145,16 +145,6 @@ async function waitUntilAsync(isReady: () => boolean): Promise<void> {
   throw new Error("Timed out waiting for session state.");
 }
 
-function enqueuePlaylist(count: number): void {
-  const queue = new TrackQueue();
-  for (let index = 0; index < count; index += 1) {
-    queue.enqueue(sampleTrack(`t${index}`));
-  }
-  if (queue.size !== count) {
-    throw new Error("playlist enqueue lost tracks");
-  }
-}
-
 interface DecodeMeasure {
   readonly cpuPct: number | null;
   readonly lag: { readonly mean: number; readonly max: number } | null;
@@ -162,21 +152,24 @@ interface DecodeMeasure {
 }
 
 async function measureDecodeAsync(): Promise<DecodeMeasure> {
-  const webmPath: string | null = writeWebmFixture();
-  if (webmPath === null) {
+  const fixture = writeSineFixture({
+    fileName: "sine.webm",
+    durationSeconds: WEBM_SECONDS,
+    extraArgs: WEBM_OPUS_ARGS,
+  });
+  if (fixture === null) {
     return {
       cpuPct: null,
       lag: null,
       note: "cpu_pct skipped: ffmpeg could not write a webm/opus fixture.",
     };
   }
-  const dir: string = join(webmPath, "..");
   const histogram = monitorEventLoopDelay({ resolution: 1 });
   histogram.enable();
   const cpuStart = process.cpuUsage();
   const wallStart: number = performance.now();
   try {
-    await playWebmUntilIdleAsync(webmPath);
+    await playWebmUntilIdleAsync(fixture.path);
   } catch (error) {
     return {
       cpuPct: null,
@@ -185,7 +178,7 @@ async function measureDecodeAsync(): Promise<DecodeMeasure> {
     };
   } finally {
     histogram.disable();
-    rmSync(dir, { recursive: true, force: true });
+    removeSineFixture(fixture);
   }
   const wallMs: number = performance.now() - wallStart;
   const cpu = process.cpuUsage(cpuStart);
@@ -215,34 +208,6 @@ async function playWebmUntilIdleAsync(webmPath: string): Promise<void> {
   player.stop();
 }
 
-function writeWebmFixture(): string | null {
-  const dir: string = mkdtempSync(join(tmpdir(), "yambot-bench-"));
-  const outPath: string = join(dir, "sine.webm");
-  const result = spawnSync(
-    "ffmpeg",
-    [
-      "-y",
-      "-f",
-      "lavfi",
-      "-i",
-      `sine=frequency=440:duration=${WEBM_SECONDS}`,
-      "-c:a",
-      "libopus",
-      "-b:a",
-      "64k",
-      "-f",
-      "webm",
-      outPath,
-    ],
-    { encoding: "utf8" },
-  );
-  if (result.status !== 0) {
-    rmSync(dir, { recursive: true, force: true });
-    return null;
-  }
-  return outPath;
-}
-
 function roundLagMs(nanoseconds: number): number {
   return Math.round((nanoseconds / 1e6) * 1000) / 1000;
 }
@@ -268,65 +233,6 @@ class DelayedEngine implements EnginePort {
   async openTrackAudio(): Promise<TrackAudio> {
     await sleepAsync(this.#openDelayMs);
     return { stream: immediateStream(), format: "webm/opus" };
-  }
-}
-
-class DelayedVoice implements VoicePort {
-  readonly #joinDelayMs: number;
-  #channelId: string | null = null;
-  #idleHandler: (() => void) | undefined;
-
-  constructor(joinDelayMs: number) {
-    this.#joinDelayMs = joinDelayMs;
-  }
-
-  async join(channelId: string): Promise<void> {
-    await sleepAsync(this.#joinDelayMs);
-    this.#channelId = channelId;
-  }
-
-  getChannelId(): string | null {
-    return this.#channelId;
-  }
-
-  getChannelName(): string {
-    return "music";
-  }
-
-  async play(_audio: TrackAudio): Promise<void> {
-    return;
-  }
-
-  stop(): void {
-    this.#idleHandler?.();
-  }
-
-  pause(): boolean {
-    return false;
-  }
-
-  unpause(): boolean {
-    return false;
-  }
-
-  isPaused(): boolean {
-    return false;
-  }
-
-  playbackDurationMs(): number {
-    return 0;
-  }
-
-  destroy(): void {
-    this.#channelId = null;
-  }
-
-  onIdle(handler: () => void): void {
-    this.#idleHandler = handler;
-  }
-
-  onDisconnected(_handler: () => void): void {
-    return;
   }
 }
 
@@ -365,11 +271,4 @@ function immediateStream(): ReadableStream<Uint8Array> {
 
 function uniqueGuildId(label: string): string {
   return `${label}-${Math.random().toString(16).slice(2)}`;
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
 }
