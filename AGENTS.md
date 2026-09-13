@@ -118,6 +118,7 @@ First supervised build of each pattern to copy. Prefer a vertical slice (one thi
 | Core playback vertical slice | `packages/bot/src/main.ts` | command → guild session → engine resolve → audio in voice |
 | Bot command module | `packages/bot/src/commands/play.ts` | one file per command: parse input, call session, reply |
 | Engine source module | `packages/audio-engine/src/sources/youtube.ts` | resolve URL or search into a track; no Discord types |
+| Offline playback bench | `packages/audio-engine/src/bench/run.ts` | injected clients, JSON metrics, no Java |
 
 ## Cloud types
 
