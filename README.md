@@ -32,12 +32,22 @@ Slash commands `/play`, `/scsearch`, `/skip`, `/queue`, `/pause`, `/resume`, `/n
 
 `bun run dev` starts the same bot with Node `--watch` (restarts on file change).
 
-## Playback bench
+## Playback benches
 
-`bun run bench:perf` prints JSON and a markdown table. It uses injected
-source clients and a mocked voice port. It does not need Java, a Discord
-token, or live YouTube. Optional `--n 10` sets repeats (default 10).
-See `PERF.md` for numbers and the LavaPlayer map.
+`bun run bench:perf` prints JSON and a markdown table. Injected source
+clients and a mocked voice port. No Java, no Discord token, no live
+YouTube. Optional `--n 10` sets repeats (default 10).
+
+`bun run bench:load` is a headless N-session scale sweep (default
+webm/opus fixtures, N = 1, 10, 50, 100). Not in CI. `--mode mock` is
+the Java-free subset used by unit tests. `--mode http` uses real HTTP
+resolve/open and PATH ffmpeg.
+
+`bun run bench:vs-lavalink` is **opt-in**. It needs a JDK 17+, downloads
+a pinned Lavalink jar, and prints a yambot vs Lavalink winner table.
+Never run from CI. See `scripts/bench-lavalink/README.md`.
+
+Numbers and the winner table live in `PERF.md`.
 
 ## Commands
 

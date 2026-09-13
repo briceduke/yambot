@@ -561,3 +561,27 @@ it if you measure it.
 Playback benches and skip-path tests.
 
 **Tags:** process, product
+
+---
+
+## Context
+
+R3 forbids Java in the product. A bake-off still needs Lavalink numbers.
+
+## Problem
+
+Agents either skip the bake-off or add Java to `bun test` / CI.
+
+## Rule
+
+Java may live only in an opt-in harness (`scripts/bench-lavalink`,
+`bun run bench:vs-lavalink`). Default tests and GitHub Actions must
+never exec `java`. Lavalink `TrackStartEvent` works without Discord
+voice for HTTP fixtures. Cap live `loadtracks` with a timeout. Start
+many Lavalink players in small batches; N=100 all-at-once hangs.
+
+## Applies to
+
+Perf bake-offs, load benches, and constitution R3 wording.
+
+**Tags:** process, product

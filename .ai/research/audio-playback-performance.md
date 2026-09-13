@@ -13,8 +13,10 @@ same passthrough idea for YouTube webm/opus (`StreamType.WebmOpus`). The
 fair comparison is stage-to-stage (resolve / open / first frame / skip),
 not JVM vs Node wall times on different machines.
 
-This repo must not add LavaPlayer, Lavalink, or any Java (constitution
-R3). Numbers below are from public docs, not a Java run in CI.
+This repo must not add LavaPlayer, Lavalink, or any Java as a **product
+or CI** dependency (constitution R3). Optional
+`bun run bench:vs-lavalink` may spawn a throwaway JDK. Default
+`bun test` never execs `java`.
 
 ## Questions
 
@@ -72,19 +74,20 @@ Unfair if treated as a bake-off without labels:
 - Lavalink’s extra process and WebSocket vs yambot in-process.
 - Default 5 s frame buffer vs yambot’s demux-as-it-arrives path.
 
-### 4. Optional human Lavalink side-by-side (not CI)
+### 4. Opt-in Lavalink bake-off (not CI)
 
-A person with Java installed can, outside this repo:
+`bun run bench:vs-lavalink` downloads pinned Lavalink 4.2.2, serves a
+local HTTP sine fixture, times REST `loadtracks` and WS
+`TrackStartEvent` (no Discord), runs `bun run bench:perf` and
+`bench:load` on the same box, and prints a winner table. JDK 17+
+required. Numbers live in `PERF.md`.
 
-1. Run a throwaway Lavalink jar with YouTube plugin.
-2. Time REST `loadtracks` for the same URL/search/playlist yambot uses.
-3. Time from `play` to first `playerUpdate` / audible audio in a test
-   guild.
-4. Paste numbers into `PERF.md` as `live/human`, never into
-   `bun test`.
+Live YouTube/SoundCloud: attempt once with a 12 s cap. Bot-wall or
+timeout → `can't tell yet`. Audible Discord UDP is still human smoke.
 
-Default `bun run bench:perf` and CI must stay Java-free. Do not add a
-Lavalink submodule, Docker Java service, or test that execs `java`.
+Default `bun run bench:perf` / `bench:load --mode mock` / CI stay
+Java-free. Do not add a Lavalink submodule, Docker Java service, or
+test that execs `java`.
 
 ## Recommendation for this app
 
@@ -92,4 +95,6 @@ Keep the LavaPlayer comparison as a mapping table plus labeled numbers.
 Improve yambot by cutting extra InnerTube round trips, overlapping join
 with resolve/open, and opening the next track before skip. Do not copy
 LavaPlayer’s player-manager / frame-buffer / thread-per-track design
-(R4). Measure with `bun run bench:perf`.
+(R4). Measure with `bun run bench:perf`. For a same-machine winner
+table, `bun run bench:vs-lavalink` (opt-in Java). For N-session
+behavior, `bun run bench:load`.

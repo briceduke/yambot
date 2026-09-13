@@ -12,6 +12,8 @@
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun test",
     "bench:perf": "bun scripts/bench-perf.ts",
+    "bench:load": "bun scripts/bench-load.ts",
+    "bench:vs-lavalink": "bun scripts/bench-vs-lavalink.ts",
     "start": "bun run --cwd packages/bot start",
     "dev": "bun run --cwd packages/bot dev"
   }
