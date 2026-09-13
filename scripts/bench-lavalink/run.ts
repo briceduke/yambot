@@ -124,7 +124,7 @@ export async function runVsLavalinkAsync(
   const n: number = readRepeatCount(argv);
   const notes: string[] = [
     "Lower p50 wins. Brice asked for end-user-shaped numbers, not Node vs JVM fairness.",
-    "HTTP TTFA is resolve/open/first AudioPlayer Playing vs loadtracks + TrackStartEvent (no Discord UDP).",
+    "HTTP TTFA is playNow of already-opened audio until AudioPlayer Playing vs loadtracks + TrackStartEvent (no Discord UDP).",
     "Lavalink frameBufferDurationMs stays at the example default 5000.",
   ];
   log("injected bench:perf…");

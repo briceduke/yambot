@@ -173,7 +173,9 @@ export class GuildMusicSession {
   }
 
   /**
-   * Stops the player. Returns the skipped track, or `null` if nothing is current.
+   * Skips the current track. Plays the next queued track immediately
+   * (does not wait for player Idle / silence padding). Last-track skip
+   * stops the player and starts the idle-leave timer.
    * @returns The skipped track, or `null`.
    */
   skipCurrent(): Track | null {
@@ -181,7 +183,14 @@ export class GuildMusicSession {
     if (skipped === null) {
       return null;
     }
-    this.#voice.stop();
+    const next: Track | null = this.#queue.dequeueNext();
+    if (next === null) {
+      this.#stopBecauseQueueEmpty();
+      return skipped;
+    }
+    this.#ignoreIdle = true;
+    this.#cancelScheduledIdleLeave();
+    void this.#playSkippedNextAsync(next);
     return skipped;
   }
 
@@ -345,6 +354,25 @@ export class GuildMusicSession {
       return;
     }
     await this.#playNextFromQueueAsync();
+  }
+
+  async #playSkippedNextAsync(track: Track): Promise<void> {
+    const played: boolean = await this.#tryPlayNextAsync(track);
+    this.#ignoreIdle = false;
+    if (!played) {
+      await this.#playNextFromQueueAsync();
+    }
+  }
+
+  #stopBecauseQueueEmpty(): void {
+    this.#ignoreIdle = true;
+    this.#currentTrack = null;
+    this.#abandonPrefetch();
+    this.#voice.stop();
+    this.#ignoreIdle = false;
+    if (this.#voice.getChannelId() !== null) {
+      this.#armIdleLeave();
+    }
   }
 
   async #playNextFromQueueAsync(): Promise<void> {

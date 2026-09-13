@@ -206,6 +206,22 @@ describe("GuildMusicSession", () => {
     await waitUntilAsync(() => session.currentTrack === second);
     expect(performance.now() - startedAt).toBeLessThan(25);
     expect(opens).toBe(2);
+    expect(voice.stopCalls).toBe(0);
+  });
+
+  test("skip while a next track exists does not stop the player first", async () => {
+    const voice = new FakeVoice();
+    const session = createSession({
+      guildId: "guild-skip-no-stop",
+      engine: createEngine(),
+      voice,
+    });
+    await session.playNow(sampleTrack("one"));
+    session.enqueue(sampleTrack("two", 61));
+    session.skipCurrent();
+    await waitUntilAsync(() => session.currentTrack?.title === "two");
+    expect(voice.stopCalls).toBe(0);
+    expect(voice.played).toHaveLength(2);
   });
 
   test("last-track skip schedules idle leave then fire drops the session", async () => {
@@ -410,6 +426,7 @@ describe("GuildMusicSession", () => {
 class FakeVoice implements VoicePort {
   readonly played: TrackAudio[] = [];
   destroyed = false;
+  stopCalls = 0;
   #channelId: string | null = null;
   #idleHandler: (() => void) | undefined;
   #disconnectedHandler: (() => void) | undefined;
@@ -436,6 +453,7 @@ class FakeVoice implements VoicePort {
   }
 
   stop(): void {
+    this.stopCalls += 1;
     this.#isPlaying = false;
     this.#paused = false;
     this.#idleHandler?.();
