@@ -11,6 +11,7 @@
     "checks:structure": "bun run --cwd packages/checks check:structure",
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun test",
+    "bench:perf": "bun scripts/bench-perf.ts",
     "start": "bun run --cwd packages/bot start",
     "dev": "bun run --cwd packages/bot dev"
   }

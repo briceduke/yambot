@@ -32,6 +32,13 @@ Slash commands `/play`, `/scsearch`, `/skip`, `/queue`, `/pause`, `/resume`, `/n
 
 `bun run dev` starts the same bot with Node `--watch` (restarts on file change).
 
+## Playback bench
+
+`bun run bench:perf` prints JSON and a markdown table. It uses injected
+source clients and a mocked voice port. It does not need Java, a Discord
+token, or live YouTube. Optional `--n 10` sets repeats (default 10).
+See `PERF.md` for numbers and the LavaPlayer map.
+
 ## Commands
 
 Slash: `/play`, `/scsearch`, `/skip`, `/queue`, `/pause`, `/resume`, `/nowplaying`, `/remove`, `/shuffle`, `/clear`, `/stop`.

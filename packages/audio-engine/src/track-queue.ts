@@ -40,6 +40,14 @@ export class TrackQueue {
   }
 
   /**
+   * Next track without removing it.
+   * @returns The head track, or `null` when empty.
+   */
+  peek(): Track | null {
+    return this.#tracks[0] ?? null;
+  }
+
+  /**
    * Removes the track at a 0-based index, or returns `null` if the index is out of range.
    * @param index - 0-based position in the queue.
    * @returns The removed track, or `null`.

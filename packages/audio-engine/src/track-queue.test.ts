@@ -24,6 +24,7 @@ describe("TrackQueue", () => {
     queue.enqueue(first);
     queue.enqueue(second);
     expect(queue.size).toBe(2);
+    expect(queue.peek()).toBe(first);
 
     const listed = queue.list();
     expect(listed).toEqual([first, second]);
@@ -36,6 +37,7 @@ describe("TrackQueue", () => {
     expect(queue.dequeueNext()?.title).toBe("three");
     expect(queue.dequeueNext()).toBeNull();
     expect(queue.size).toBe(0);
+    expect(queue.peek()).toBeNull();
   });
 
   test("removeAt returns the track and shifts the rest", () => {
