@@ -61,6 +61,7 @@ export class HeadlessVoicePort implements VoicePort {
     const resource = createAudioResource(Readable.fromWeb(audio.stream), {
       inputType: streamTypeFor(audio.format),
       inlineVolume: false,
+      silencePaddingFrames: 0,
     });
     this.#player.play(resource);
     if (!this.#waitUntilPlaying) {
@@ -70,7 +71,7 @@ export class HeadlessVoicePort implements VoicePort {
   }
 
   stop(): void {
-    this.#player.stop();
+    this.#player.stop(true);
   }
 
   pause(): boolean {
@@ -97,7 +98,7 @@ export class HeadlessVoicePort implements VoicePort {
   }
 
   destroy(): void {
-    this.#player.stop();
+    this.#player.stop(true);
     this.#channelId = null;
   }
 

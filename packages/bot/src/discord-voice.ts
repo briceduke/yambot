@@ -122,8 +122,8 @@ class DiscordVoicePort implements VoicePort {
   }
 
   /**
-   * Plays engine audio. YouTube webm/opus needs no ffmpeg. SoundCloud
-   * hls/aac and HTTP http/mpeg use PATH ffmpeg via StreamType.Arbitrary.
+   * Plays engine audio. YouTube and remuxed HTTP webm/opus need no
+   * ffmpeg. SoundCloud hls/aac and leftover HTTP mpeg use PATH ffmpeg.
    * @param audio - Stream and format from the engine.
    */
   async play(audio: TrackAudio): Promise<void> {
@@ -131,6 +131,8 @@ class DiscordVoicePort implements VoicePort {
     try {
       const resource = createAudioResource(Readable.fromWeb(audio.stream), {
         inputType,
+        inlineVolume: false,
+        silencePaddingFrames: 0,
       });
       this.#player.play(resource);
     } catch (error) {
@@ -145,7 +147,7 @@ class DiscordVoicePort implements VoicePort {
   }
 
   stop(): void {
-    this.#player.stop();
+    this.#player.stop(true);
   }
 
   /**

@@ -5,7 +5,7 @@ import {
   type Track,
   type TrackAudio,
 } from "@yambot/audio-engine";
-import { createReadStream } from "node:fs";
+import { readFileSync } from "node:fs";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { Readable } from "node:stream";
 
@@ -102,7 +102,8 @@ export async function runLoadBench(
   const skipStorms: number = options.skipStorms ?? DEFAULT_SKIP_STORMS;
   const notes: string[] = [
     "Voice is headless (no Discord UDP). Audible send is unverifiable here.",
-    `Mode ${mode}: mock uses instant play; webm uses StreamType.WebmOpus; http uses real resolve/open + ffmpeg.`,
+    `Mode ${mode}: mock uses instant play; webm uses StreamType.WebmOpus; http remuxes mpeg to webm/opus in the engine.`,
+    "TTFA is playNow after join/resolve (same stage as Lavalink PATCH until TrackStart).",
   ];
   const fixture = mode === "mock" ? null : await setupFixtureAsync(mode);
   if (mode !== "mock" && fixture === null) {
@@ -256,7 +257,6 @@ async function startSessionAsync(
   const engine: EnginePort = createEngine(input);
   const voice: VoicePort = createVoice(input.mode);
   const session = createSession({ guildId, engine, voice });
-  const startedAt: number = performance.now();
   try {
     await session.joinInvoker("voice-1");
     const resolved: ResolveResult = await session.engine.resolveTrack({
@@ -267,6 +267,7 @@ async function startSessionAsync(
       dropSession(guildId);
       return null;
     }
+    const startedAt: number = performance.now();
     await session.playNow(first);
     ttfaSamples.push(performance.now() - startedAt);
     return { guildId, session, playUri: first.uri };
@@ -334,7 +335,7 @@ function createEngine(input: MeasureInput): EnginePort {
     return new LiveHttpEngine();
   }
   if (input.fixture !== null) {
-    return new FileEngine(input.fixture.sine.path, "webm/opus");
+    return new FileEngine(readFileSync(input.fixture.sine.path), "webm/opus");
   }
   return new InstantEngine();
 }
@@ -414,7 +415,7 @@ async function waitUntilAsync(
     if (isReady()) {
       return true;
     }
-    await sleepAsync(2);
+    await sleepAsync(0);
   }
   return false;
 }
@@ -479,11 +480,11 @@ async function setupFixtureAsync(
 }
 
 class FileEngine implements EnginePort {
-  readonly #path: string;
+  readonly #bytes: Buffer;
   readonly #format: TrackAudio["format"];
 
-  constructor(path: string, format: TrackAudio["format"]) {
-    this.#path = path;
+  constructor(bytes: Buffer, format: TrackAudio["format"]) {
+    this.#bytes = bytes;
     this.#format = format;
   }
 
@@ -497,7 +498,9 @@ class FileEngine implements EnginePort {
 
   async openTrackAudio(): Promise<TrackAudio> {
     return {
-      stream: Readable.toWeb(createReadStream(this.#path)) as ReadableStream<Uint8Array>,
+      stream: Readable.toWeb(
+        Readable.from(this.#bytes),
+      ) as ReadableStream<Uint8Array>,
       format: this.#format,
     };
   }

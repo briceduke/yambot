@@ -1,5 +1,6 @@
 import {
   openTrackAudio,
+  prewarmHttpRemuxAsync,
   resolveTrack,
   type Track,
 } from "@yambot/audio-engine";
@@ -31,7 +32,8 @@ export interface YambotHttpMetrics {
 /**
  * Times real HTTP resolve/open/play/skip on localhost fixtures.
  * @param input - Two audio URLs, repeat count, and CPU hold.
- * @returns Summaries. Play waits for AudioPlayer Playing (no Discord UDP).
+ * @returns Summaries. TTFA is playNow of already-opened audio until
+ *   AudioPlayer Playing. Skip plays the next track without Idle padding.
  */
 export async function measureYambotHttpAsync(input: {
   readonly urlA: string;
@@ -39,6 +41,7 @@ export async function measureYambotHttpAsync(input: {
   readonly n: number;
   readonly holdMs: number;
 }): Promise<YambotHttpMetrics> {
+  await prewarmHttpRemuxAsync();
   const load_ms = await timeManyAsync(input.n, async () => {
     await resolveTrack({ query: input.urlA });
   });
@@ -56,9 +59,11 @@ export async function measureYambotHttpAsync(input: {
       await reader.cancel();
     }
   });
-  const ttfa_ms = await timeManyAsync(input.n, async () => {
-    await playUntilCurrentAsync(input.urlA);
-  });
+  const ttfaSamples: number[] = [];
+  for (let index = 0; index < input.n; index += 1) {
+    ttfaSamples.push(await measurePlayNowMsAsync(input.urlA));
+  }
+  const ttfa_ms: SampleSummary = summarizeSamples(ttfaSamples);
   const skipSamples: number[] = [];
   for (let index = 0; index < input.n; index += 1) {
     skipSamples.push(await measureSkipMsAsync(input.urlA, input.urlB));
@@ -110,7 +115,7 @@ export async function attemptYambotLiveLoadAsync(
   }
 }
 
-async function playUntilCurrentAsync(url: string): Promise<void> {
+async function measurePlayNowMsAsync(url: string): Promise<number> {
   const guildId: string = uniqueId("yt");
   const session = createSession({
     guildId,
@@ -124,7 +129,10 @@ async function playUntilCurrentAsync(url: string): Promise<void> {
     if (track === undefined) {
       throw new Error("no track");
     }
-    await session.playNow(track);
+    const audio = await session.engine.openTrackAudio({ track });
+    const startedAt: number = performance.now();
+    await session.playNow(track, audio);
+    return performance.now() - startedAt;
   } finally {
     dropSession(guildId);
   }
@@ -210,7 +218,7 @@ async function waitTitleAsync(
     if (session.currentTrack?.title === title) {
       return true;
     }
-    await sleepAsync(5);
+    await sleepAsync(0);
   }
   return false;
 }
