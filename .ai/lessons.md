@@ -610,6 +610,34 @@ Node `Socket`.
 
 ## Applies to
 
-HTTP open/play, skip, bake-off winner rows, and engine remux workers.
+HTTP open/play, skip, bake-off winner rows, and engine remux.
 
 **Tags:** product, platform
+
+---
+
+## Context
+
+HTTP remux kept a pool of 2 idle ffmpeg workers, slept 50 ms to "warm"
+them, and unref'd stdio so idle children would not pin the process.
+
+## Problem
+
+Winner-row HTTP TTFA is play of already-remuxed audio. Idle workers
+added RSS and spawn/unref ceremony. The 50 ms sleep did not make
+ffmpeg ready; it only delayed first open. Duplicate play/scsearch
+doors copied the same join/resolve/open path.
+
+## Rule
+
+Spawn ffmpeg when remuxing one HTTP body. Wait for a playable prefix.
+Do not keep idle remux workers. Do not prewarm at bot start. One play
+door (`play-from-query.ts`); command files hold slash data and copy.
+One stats module for benches; drop load modes that are not a winner
+row (HTTP mpeg scale cliffs at N=1).
+
+## Applies to
+
+HTTP remux, the play door, and playback benches.
+
+**Tags:** product, process

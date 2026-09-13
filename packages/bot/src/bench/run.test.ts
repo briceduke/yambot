@@ -9,7 +9,6 @@ describe("runBotBench", () => {
     expect(report.n).toBe(2);
     expect(report.ttfa_ms.n).toBe(2);
     expect(report.skip_ms.n).toBe(2);
-    expect(report.playlist_enqueue_ms.n).toBe(2);
     expect(report.ttfa_ms.p50).toBeGreaterThan(0);
     expect(report.skip_ms.p50).toBeGreaterThan(0);
   }, 30_000);

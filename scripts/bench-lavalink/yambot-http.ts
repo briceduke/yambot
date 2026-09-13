@@ -1,21 +1,22 @@
 import {
   openTrackAudio,
-  prewarmHttpRemuxAsync,
   resolveTrack,
-  stopHttpRemuxPool,
   type Track,
 } from "@yambot/audio-engine";
 import {
+  bytesToMb,
+  errorMessage,
+  roundMs,
+  sleepAsync,
   summarizeSamples,
   timeManyAsync,
   type SampleSummary,
-} from "../../packages/audio-engine/src/bench/stats.ts";
+} from "@yambot/audio-engine/bench";
 import { HeadlessVoicePort } from "../../packages/bot/src/bench/headless-voice.ts";
 import {
   createSession,
   dropSession,
 } from "../../packages/bot/src/guild-music-session.ts";
-import { sleepAsync } from "../../packages/bot/src/bench/stats.ts";
 
 const PREFETCH_WAIT_MS = 120;
 
@@ -42,7 +43,6 @@ export async function measureYambotHttpAsync(input: {
   readonly n: number;
   readonly holdMs: number;
 }): Promise<YambotHttpMetrics> {
-  await prewarmHttpRemuxAsync();
   const load_ms = await timeManyAsync(input.n, async () => {
     await resolveTrack({ query: input.urlA });
   });
@@ -71,7 +71,6 @@ export async function measureYambotHttpAsync(input: {
   }
   const skip_ms: SampleSummary = summarizeSamples(skipSamples);
   const cpu_pct: number | null = await measureCpuAsync(input.urlA, input.holdMs);
-  stopHttpRemuxPool();
   const memory = process.memoryUsage();
   return {
     load_ms,
@@ -105,10 +104,10 @@ export async function attemptYambotLiveLoadAsync(
     return {
       summary: {
         n: 1,
-        p50: round3(elapsed),
-        p95: round3(elapsed),
-        min: round3(elapsed),
-        max: round3(elapsed),
+        p50: roundMs(elapsed),
+        p95: roundMs(elapsed),
+        min: roundMs(elapsed),
+        max: roundMs(elapsed),
       },
       error: null,
     };
@@ -227,21 +226,6 @@ async function waitTitleAsync(
 
 function uniqueId(label: string): string {
   return `${label}-${Math.random().toString(16).slice(2)}`;
-}
-
-function bytesToMb(bytes: number): number {
-  return Math.round((bytes / (1024 * 1024)) * 100) / 100;
-}
-
-function round3(value: number): number {
-  return Math.round(value * 1000) / 1000;
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
 }
 
 function timeoutRejectAsync(ms: number, message: string): Promise<never> {

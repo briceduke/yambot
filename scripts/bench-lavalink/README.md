@@ -43,4 +43,4 @@ bun run bench:load --mode mock --sessions 1,2
 
 `bench:load --mode mock` is the CI-safe subset (used by
 `packages/bot/src/bench/load.test.ts`). Default `bench:load` is opt-in
-and uses real fixture decode.
+and uses real webm/opus fixture decode.
