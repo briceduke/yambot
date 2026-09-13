@@ -285,7 +285,7 @@ export class GuildMusicSession {
    */
   removeUpcomingAt(index: number): Track | null {
     const removed: Track | null = this.#queue.removeAt(index);
-    this.#refreshPrefetch();
+    this.#startPrefetch();
     return removed;
   }
 
@@ -294,7 +294,7 @@ export class GuildMusicSession {
    */
   shuffleUpcoming(): void {
     this.#queue.shuffle();
-    this.#refreshPrefetch();
+    this.#startPrefetch();
   }
 
   /**
@@ -428,11 +428,10 @@ export class GuildMusicSession {
   }
 
   #startPrefetch(): void {
-    if (this.#currentTrack === null) {
-      return;
-    }
-    const next: Track | null = this.#queue.peek();
+    const next: Track | null =
+      this.#currentTrack === null ? null : this.#queue.peek();
     if (next === null) {
+      this.#abandonPrefetch();
       return;
     }
     if (this.#prefetch?.uri === next.uri) {
@@ -443,19 +442,6 @@ export class GuildMusicSession {
       uri: next.uri,
       promise: this.engine.openTrackAudio({ track: next }),
     };
-  }
-
-  #refreshPrefetch(): void {
-    const next: Track | null = this.#queue.peek();
-    if (next === null) {
-      this.#abandonPrefetch();
-      return;
-    }
-    if (this.#prefetch?.uri === next.uri) {
-      return;
-    }
-    this.#abandonPrefetch();
-    this.#startPrefetch();
   }
 
   #abandonPrefetch(): void {
