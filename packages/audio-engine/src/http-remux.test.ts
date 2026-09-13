@@ -52,9 +52,13 @@ describe("remuxHttpMpegToWebmAsync", () => {
     expect(audio.format).toBe("webm/opus");
     const reader = audio.stream.getReader();
     try {
-      const first = await reader.read();
-      expect(first.done).toBe(false);
-      expect((first.value?.byteLength ?? 0) > 0).toBe(true);
+      let got = 0;
+      while (got < 100) {
+        const first = await reader.read();
+        expect(first.done).toBe(false);
+        got += first.value?.byteLength ?? 0;
+      }
+      expect(got >= 100).toBe(true);
     } finally {
       await reader.cancel();
     }

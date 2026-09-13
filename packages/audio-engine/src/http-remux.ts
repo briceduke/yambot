@@ -6,6 +6,7 @@ import { TrackResolveError, type TrackAudio } from "./track.ts";
 const POOL_SIZE = 2;
 const WARM_WAIT_MS = 50;
 const FIRST_BYTE_TIMEOUT_MS = 5_000;
+const PLAYABLE_PREFIX_BYTES = 4_096;
 const PLAY_FAILED = "Couldn't play that stream.";
 
 const MP3_TO_WEBM_ARGS: readonly string[] = [
@@ -61,6 +62,17 @@ export async function prewarmHttpRemuxAsync(): Promise<void> {
   }
   await sleepAsync(WARM_WAIT_MS);
   poolIsWarm = true;
+}
+
+/**
+ * Kills idle remux workers so benches can drop RSS after HTTP measure.
+ */
+export function stopHttpRemuxPool(): void {
+  while (idleWorkers.length > 0) {
+    const worker: RemuxWorker | undefined = idleWorkers.pop();
+    worker?.kill("SIGKILL");
+  }
+  poolIsWarm = false;
 }
 
 /**
@@ -141,7 +153,7 @@ async function remuxWithWorkerAsync(
   });
   nodeIn.pipe(worker.stdin);
   try {
-    await waitFirstByteAsync(worker.stdout);
+    await waitBufferedPrefixAsync(worker.stdout, PLAYABLE_PREFIX_BYTES);
   } catch {
     worker.kill("SIGKILL");
     throw new TrackResolveError(PLAY_FAILED);
@@ -152,36 +164,59 @@ async function remuxWithWorkerAsync(
   };
 }
 
-function waitFirstByteAsync(stream: Readable): Promise<void> {
+function waitBufferedPrefixAsync(
+  stream: Readable,
+  minBytes: number,
+): Promise<void> {
   return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
     const timer: ReturnType<typeof setTimeout> = setTimeout(() => {
       cleanup();
-      reject(new Error("http remux first byte timed out"));
+      reject(new Error("http remux prefix timed out"));
     }, FIRST_BYTE_TIMEOUT_MS);
-    function onData(chunk: Buffer): void {
-      stream.pause();
-      stream.unshift(chunk);
+    function onReadable(): void {
+      drainToChunks();
+      if (total >= minBytes) {
+        finishOk();
+      }
+    }
+    function onEnd(): void {
+      if (total > 0) {
+        finishOk();
+        return;
+      }
       cleanup();
-      resolve();
+      reject(new Error("http remux ended before first byte"));
     }
     function onFail(error: Error): void {
       cleanup();
       reject(error);
     }
+    function drainToChunks(): void {
+      let chunk: Buffer | null = stream.read() as Buffer | null;
+      while (chunk !== null) {
+        chunks.push(chunk);
+        total += chunk.length;
+        chunk = stream.read() as Buffer | null;
+      }
+    }
+    function finishOk(): void {
+      cleanup();
+      stream.unshift(Buffer.concat(chunks));
+      resolve();
+    }
     function cleanup(): void {
       clearTimeout(timer);
-      stream.off("data", onData);
+      stream.off("readable", onReadable);
       stream.off("error", onFail);
       stream.off("end", onEnd);
     }
-    function onEnd(): void {
-      cleanup();
-      reject(new Error("http remux ended before first byte"));
-    }
-    stream.once("data", onData);
+    stream.pause();
+    stream.on("readable", onReadable);
     stream.once("error", onFail);
     stream.once("end", onEnd);
-    stream.resume();
+    onReadable();
   });
 }
 
