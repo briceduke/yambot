@@ -21,6 +21,7 @@ import {
   type SampleSummary,
 } from "../../packages/audio-engine/src/bench/stats.ts";
 import {
+  buildScaleTtfaRow,
   buildWinnerRow,
   winnerMarkdown,
   type WinnerRow,
@@ -181,6 +182,14 @@ export async function runVsLavalinkAsync(
       await Bun.sleep(400);
     }
   }
+  log("measuring yambot webm/opus scale…");
+  const yambotScale: LoadReport = await runLoadBench({
+    mode: "webm",
+    sessionCounts: SCALE_COUNTS,
+    holdMs: HOLD_MS,
+    queueDepth: 50,
+    skipStorms: 3,
+  });
   log("measuring yambot HTTP fixture…");
   const yambotHttp: YambotHttpMetrics = await measureYambotHttpAsync({
     urlA: fixtures.urlA,
@@ -193,14 +202,6 @@ export async function runVsLavalinkAsync(
   if (ll !== undefined) {
     rmSync(ll.workDir, { recursive: true, force: true });
   }
-  log("measuring yambot webm/opus scale…");
-  const yambotScale: LoadReport = await runLoadBench({
-    mode: "webm",
-    sessionCounts: SCALE_COUNTS,
-    holdMs: HOLD_MS,
-    queueDepth: 50,
-    skipStorms: 3,
-  });
   const winner_rows: WinnerRow[] = buildRows(
     yambotHttp,
     lavalinkHttp,
@@ -312,11 +313,12 @@ function buildRows(
       (point) => point.sessions === sessions,
     );
     rows.push(
-      buildWinnerRow(
+      buildScaleTtfaRow(
         `scale_ttfa_ms_N${sessions}`,
         yPoint?.ttfa_ms ?? null,
+        yPoint?.fail_rate ?? 1,
         lPoint?.ttfa_ms ?? null,
-        "concurrent sessions, same VM",
+        lPoint?.fail_rate ?? 1,
       ),
       buildWinnerRow(
         `scale_rss_mb_N${sessions}`,

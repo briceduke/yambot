@@ -4,6 +4,7 @@ import type { SampleSummary } from "./stats.ts";
 import {
   buildWinnerRow,
   decideWinner,
+  decideScaleWinner,
   winnerMarkdown,
 } from "./winner.ts";
 
@@ -36,6 +37,17 @@ describe("decideWinner", () => {
   test("labels a missing side as can't tell yet", () => {
     expect(decideWinner(yambotFast, null)).toBe("can't tell yet");
     expect(decideWinner(null, lavalinkSlow)).toBe("can't tell yet");
+  });
+});
+
+describe("decideScaleWinner", () => {
+  test("gives the row to the side that finished when the other cliffed", () => {
+    expect(decideScaleWinner(yambotFast, 0, lavalinkSlow, 0.8)).toBe("yambot");
+    expect(decideScaleWinner(yambotFast, 0.8, lavalinkSlow, 0)).toBe("lavalink");
+  });
+
+  test("uses p50 when both sides finish", () => {
+    expect(decideScaleWinner(yambotFast, 0, lavalinkSlow, 0)).toBe("yambot");
   });
 });
 

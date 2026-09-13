@@ -61,6 +61,71 @@ export function decideWinner(
 }
 
 /**
+ * Scale row winner. A side that cliffs (fail_rate ≥ 5%) did not finish N.
+ * @param yambot - yambot TTFA samples.
+ * @param yambotFailRate - yambot fail rate for that N.
+ * @param lavalink - Lavalink TTFA samples (survivors only).
+ * @param lavalinkFailRate - Lavalink fail rate for that N.
+ * @returns Winner label.
+ */
+export function decideScaleWinner(
+  yambot: SampleSummary | null,
+  yambotFailRate: number,
+  lavalink: SampleSummary | null,
+  lavalinkFailRate: number,
+): WinnerName {
+  const yambotOk: boolean = yambot !== null && yambotFailRate < 0.05;
+  const lavalinkOk: boolean = lavalink !== null && lavalinkFailRate < 0.05;
+  if (yambotOk && !lavalinkOk) {
+    return "yambot";
+  }
+  if (!yambotOk && lavalinkOk) {
+    return "lavalink";
+  }
+  if (!yambotOk && !lavalinkOk) {
+    return "can't tell yet";
+  }
+  return decideWinner(yambot, lavalink);
+}
+
+/**
+ * Scale TTFA row. A cliffed side (fail_rate ≥ 5%) did not finish N.
+ * @param metric - Row name.
+ * @param yambot - yambot samples.
+ * @param yambotFailRate - yambot fail rate.
+ * @param lavalink - Lavalink samples.
+ * @param lavalinkFailRate - Lavalink fail rate.
+ * @returns Winner row.
+ */
+export function buildScaleTtfaRow(
+  metric: string,
+  yambot: SampleSummary | null,
+  yambotFailRate: number,
+  lavalink: SampleSummary | null,
+  lavalinkFailRate: number,
+): WinnerRow {
+  const note: string =
+    lavalinkFailRate >= 0.05 || yambotFailRate >= 0.05
+      ? `fail_rate yambot ${yambotFailRate} / Lavalink ${lavalinkFailRate}`
+      : "concurrent sessions, same VM";
+  return {
+    metric,
+    yambotP50: yambot?.p50 ?? null,
+    yambotP95: yambot?.p95 ?? null,
+    lavalinkP50: lavalink?.p50 ?? null,
+    lavalinkP95: lavalink?.p95 ?? null,
+    deltaP50: deltaOrNull(yambot?.p50 ?? null, lavalink?.p50 ?? null),
+    winner: decideScaleWinner(
+      yambot,
+      yambotFailRate,
+      lavalink,
+      lavalinkFailRate,
+    ),
+    note,
+  };
+}
+
+/**
  * Renders a markdown winner table.
  * @param rows - Rows to print.
  * @returns Markdown table plus a newline.
