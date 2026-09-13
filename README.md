@@ -14,11 +14,11 @@ Method, caveats, and full tables: `PERF.md`.
 
 | What | yambot | Lavalink | Winner |
 |------|-------:|---------:|--------|
-| HTTP load p50 | 0.007 ms | 2.2 ms | yambot |
-| RSS / CPU | 125 MB / 1.9% | 316 MB / 3.5% | yambot |
-| HTTP first frame / skip p50 | 51 / 170 ms | 2.7 / 3.7 ms | Lavalink (in-process decode vs PATH ffmpeg) |
-| Scale TTFA p50 at N=10 / 50 | 2.8 / 11 ms | 19 / 48 ms | yambot |
-| Scale N=100 | 100/100 play, 0 fail | ~20/100 TrackStart, ~80% timeout | yambot |
+| HTTP load p50 | 0.007 ms | 2.3 ms | yambot |
+| HTTP first frame / skip p50 | 0.48 / 1.3 ms | 2.7 / 3.0 ms | yambot |
+| RSS / CPU | 130 MB / 1.9% | 306 MB / 3.5% | yambot |
+| Scale TTFA p50 at N=1 / 10 / 50 | 0.8 / 3.2 / 17 ms | 4.2 / 9.9 / 47 ms | yambot |
+| Scale N=100 | 100/100 play, 0 fail | ~19/100 TrackStart, ~81% timeout | yambot |
 | Live YouTube hear-audio | — | — | can't tell yet |
 
 Cuts on this branch (injected bench vs itself): resolve-then-open

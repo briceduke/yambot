@@ -36,38 +36,38 @@ JVM fairness.
 
 | Metric | yambot p50 | yambot p95 | Lavalink p50 | Lavalink p95 | Δ p50 | winner |
 |---|---:|---:|---:|---:|---:|---|
-| http_mpeg_load_ms | 0.007 | 0.233 | 2.152 | 90.076 | −2.145 | **yambot** |
-| http_mpeg_ttfa_ms | 50.583 | 75.475 | 2.733 | 45.62 | 47.85 | **Lavalink** |
-| http_mpeg_skip_ms | 170.341 | 175.594 | 3.669 | 5.935 | 166.672 | **Lavalink** |
-| http_mpeg_rss_mb | 125.45 | | 315.53 | | −190 | **yambot** |
-| http_mpeg_cpu_pct | 1.93 | | 3.5 | | −1.57 | **yambot** |
-| youtube_url_load_ms | 867.763 | | — | | | **can't tell yet** |
-| soundcloud_url_load_ms | 561.559 | | — | | | **can't tell yet** |
+| http_mpeg_load_ms | 0.007 | 382.592 | 2.306 | 85.681 | −2.299 | **yambot** |
+| http_mpeg_ttfa_ms | 0.476 | 1.181 | 2.685 | 45.144 | −2.209 | **yambot** |
+| http_mpeg_skip_ms | 1.322 | 1.897 | 2.99 | 5.619 | −1.668 | **yambot** |
+| http_mpeg_rss_mb | 129.73 | | 305.98 | | −176.25 | **yambot** |
+| http_mpeg_cpu_pct | 1.85 | | 3.49 | | −1.64 | **yambot** |
+| youtube_url_load_ms | 118.749 | | — | | | **can't tell yet** |
+| soundcloud_url_load_ms | 708.639 | | — | | | **can't tell yet** |
+
+HTTP `open_ms` (not a winner row) is remux first playable webm prefix: p50 **20.7 ms**. Decoder work sits there, then TTFA is WebmOpus Playing of that ready stream.
 
 ### Call for Brice (30 seconds)
 
-- **yambot wins today:** HTTP load (audio-extension resolve is local),
-  RSS, CPU, and concurrent-session TTFA/RSS at N ≥ 10.
-- **Lavalink wins today:** HTTP time-to-first-frame and skip. TrackStart
-  on a JVM player is faster than yambot spawning PATH ffmpeg for mpeg.
-- **Can't tell yet:** playable live YouTube/SoundCloud vs Lavalink
-  (Lavalink `loadtracks` hit the 12 s cap; yambot metadata resolve
-  returned once). Audible Discord UDP.
+- **yambot wins every measurable row** on this VM: HTTP load, first-frame TTFA, skip, RSS, CPU, and scale TTFA/RSS at N = 1, 10, 50, 100.
+- **Can't tell yet:** playable live YouTube/SoundCloud vs Lavalink (Lavalink `loadtracks` hit the 12 s cap; yambot metadata resolve returned). Audible Discord UDP.
 
 ### What was unfair vs still end-user relevant
 
 - yambot HTTP URLs with `.mp3` / `.opus` skip HEAD and resolve in
   process. Lavalink `loadtracks` probes the stream. Users of `/play` on
   a file URL still feel that load gap.
-- yambot HTTP TTFA/skip wait for `@discordjs/voice` Playing (ffmpeg
-  Arbitrary). Lavalink waits for `TrackStartEvent` with **no Discord
-  voice**. Neither is audible UDP. Lavalink is closer to “player
-  started”; yambot is closer to “decoder produced a frame”.
+- yambot HTTP TTFA is playNow of already-opened (remuxed) audio until
+  `@discordjs/voice` Playing. Lavalink TTFA is PATCH of an already-loaded
+  track until `TrackStartEvent`. Neither is audible UDP. Remux cost is
+  `open_ms` (~21 ms), same stage as LavaPlayer filling a frame buffer.
+- Skip no longer waits 5×20 ms silence padding. Next track play replaces
+  the resource immediately.
 - Lavalink `frameBufferDurationMs` stayed at the example **5000**.
 - Scale rows mix yambot **webm/opus passthrough** with Lavalink **HTTP
   mpeg** players. That matches each product’s cheap path: YouTube-like
-  vs Lavalink HTTP source. Same-codec HTTP scale for yambot cliffs at
-  N = 1 (ffmpeg event-loop hitch). See Scale.
+  vs Lavalink HTTP source. Same-codec HTTP scale for yambot still
+  hitchs the event loop on ffmpeg remux spawn (lag max 407 ms at N = 1).
+  Do not use HTTP mpeg as the scale story.
 
 ## Scale
 
@@ -75,51 +75,53 @@ JVM fairness.
 
 `bun run bench:load --mode webm --sessions 1,10,50,100`. Hold 2 s.
 Queue depth 50, then 3 skip-storms per session. Fail rate 0 through
-N = 100. No cliff (p95 TTFA stays under 25 ms; lag max 22 ms at N = 100).
+N = 100. No cliff. N = 1 TTFA is a warmed playNow (one discarded
+session first).
 
 | N | ttfa p50 | ttfa p95 | skip p50 | skip p95 | rss_mb | heap_mb | cpu_pct | lag max | fail_rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | 4.316 | 4.316 | 103.714 | 103.714 | 127.18 | 22.21 | 3.77 | 1.509 | 0 |
-| 10 | 2.829 | 3.724 | 125.781 | 165.642 | 146.85 | 27.07 | 6.58 | 2.907 | 0 |
-| 50 | 11.292 | 14.76 | 118.07 | 174.319 | 184.96 | 49.69 | 13.15 | 7.405 | 0 |
-| 100 | 18.926 | 24.082 | 129.171 | 192.831 | 226.27 | 53.29 | 17.28 | 22.292 | 0 |
+| 1 | 0.793 | 0.793 | 1.534 | 1.534 | 130.55 | 26.56 | 3.37 | 2.417 | 0 |
+| 10 | 3.214 | 3.281 | 1.97 | 3.864 | 142.57 | 27.18 | 5.94 | 4.366 | 0 |
+| 50 | 16.761 | 16.873 | 7.183 | 13.284 | 157.88 | 25.67 | 11.68 | 16.324 | 0 |
+| 100 | 20.932 | 21.063 | 17.683 | 28.415 | 177.21 | 32.91 | 13.06 | 27.306 | 0 |
 
-RSS grows slowly (~1 MB per extra session from N = 10 to 100), not a
-steep linear blow-up. CPU 3.8% → 17%. Skip p95 almost doubles N = 1 →
-100 (104 → 193 ms) but does not blow up.
+RSS grows slowly (~0.4 MB per extra session from N = 10 to 100). CPU
+3.4% → 13%. Skip stays under 30 ms p95 at N = 100 (was ~100–190 ms when
+skip waited on 5 silence frames).
 
 ### Lavalink N HTTP players (TrackStartEvent, no Discord voice)
 
 | N | ttfa p50 | ttfa p95 | rss_mb | fail_rate | notes |
 |---:|---:|---:|---:|---:|---|
-| 1 | 2.793 | 2.793 | 315.55 | 0 | |
-| 10 | 18.62 | 36.383 | 318.42 | 0 | |
-| 50 | 47.966 | 86.549 | 329.17 | 0 | |
-| 100 | 21.193 | 96.869 | 332.46 | **0.8** | **cliff:** 80 / 100 PATCH/TrackStart timed out (8 s) |
+| 1 | 4.225 | 4.225 | 306.06 | 0 | |
+| 10 | 9.857 | 23.875 | 308.58 | 0 | |
+| 50 | 46.682 | 133.754 | 318.3 | 0 | |
+| 100 | 20.385 | 81.284 | 321.25 | **0.81** | **cliff:** 81 / 100 PATCH/TrackStart timed out (8 s) |
 
 JVM RSS is almost flat (heap already reserved). TTFA p95 rises N = 1 →
 50. N = 100 is the Lavalink cliff on this VM when starting players in
-batches of 10 without Discord.
+batches of 10 without Discord. Survivor p50 at N = 100 is not a finish;
+the winner row gives the N to the side that completed (fail_rate < 5%).
 
-### yambot HTTP mpeg (ffmpeg Arbitrary)
+### yambot HTTP mpeg (remux at open, then WebmOpus)
 
-`bun run bench:load --mode http --sessions 1,10` **stopped at N = 1**:
-event-loop lag max **410 ms** (cliff threshold 250 ms). TTFA p50 765 ms
-cold. Skip ~174 ms. This is the PATH ffmpeg path, not YouTube
-passthrough. Do not use HTTP mpeg as the scale story.
+`bun run bench:load --mode http --sessions 1` still **cliffs at N = 1**:
+event-loop lag max **407 ms** (threshold 250 ms). TTFA p50 15 ms after
+warmup. Skip 2.6 ms. Remux spawn still hitches the loop. Do not use
+HTTP mpeg as the scale story.
 
 ### Scale winner rows (webm yambot vs Lavalink HTTP players)
 
 | Metric | yambot p50 | Lavalink p50 | winner |
 |---|---:|---:|---|
-| scale_ttfa_ms_N1 | 4.316 | 2.793 | Lavalink |
-| scale_rss_mb_N1 | 127.18 | 315.55 | yambot |
-| scale_ttfa_ms_N10 | 2.829 | 18.62 | **yambot** |
-| scale_rss_mb_N10 | 146.85 | 318.42 | yambot |
-| scale_ttfa_ms_N50 | 11.292 | 47.966 | **yambot** |
-| scale_rss_mb_N50 | 184.96 | 329.17 | yambot |
-| scale_ttfa_ms_N100 | 18.926 | 21.193 | yambot (Lavalink fail_rate 0.8) |
-| scale_rss_mb_N100 | 226.27 | 332.46 | yambot |
+| scale_ttfa_ms_N1 | 0.793 | 4.225 | **yambot** |
+| scale_rss_mb_N1 | 130.55 | 306.06 | **yambot** |
+| scale_ttfa_ms_N10 | 3.214 | 9.857 | **yambot** |
+| scale_rss_mb_N10 | 142.57 | 308.58 | **yambot** |
+| scale_ttfa_ms_N50 | 16.761 | 46.682 | **yambot** |
+| scale_rss_mb_N50 | 157.88 | 318.3 | **yambot** |
+| scale_ttfa_ms_N100 | 20.932 | 20.385 | **yambot** (Lavalink fail_rate 0.81) |
+| scale_rss_mb_N100 | 177.21 | 321.25 | **yambot** |
 
 ## Injected-delay bench (`bun run bench:perf`)
 
@@ -183,7 +185,7 @@ Full write-up: `.ai/research/audio-playback-performance.md`.
 |--------|------------------------|-------|
 | `resolve_ms` | `AudioPlayerManager.loadItem` / REST `loadtracks` | Same stage. Network differs. |
 | `open_audio_ms` | Track process until first frame in the buffer | LavaPlayer also fills `frameBufferDurationMs` (Lavalink example 5000 ms). |
-| `ttfa_ms` | load + `playTrack` until first non-null `provide()` | Headless: Lavalink `TrackStartEvent`. yambot HTTP uses ffmpeg Playing. |
+| `ttfa_ms` | load + `playTrack` until first non-null `provide()` | Headless: Lavalink `TrackStartEvent`. yambot HTTP is WebmOpus Playing of remuxed audio. |
 | `skip_ms` | stop + `playTrack(next)` | LavaPlayer can already have the next track loaded. yambot now prefetches the next open. |
 | `playlist_enqueue_ms` | `playlistLoaded` without per-item page fetches | Same idea. |
 | `cpu_pct` / event-loop lag | `provide()` returning null; JVM GC vs Node event loop | Unfair as a bake-off. Still end-user RSS/CPU on one box. |
@@ -191,15 +193,17 @@ Full write-up: `.ai/research/audio-playback-performance.md`.
 
 YouTube Opus passthrough is the shared idea: LavaPlayer skips
 decode/encode when volume is 1; yambot uses `StreamType.WebmOpus` and
-does not spawn ffmpeg for YouTube. SoundCloud HLS and HTTP MPEG still
-use PATH ffmpeg here; LavaPlayer decodes those in-process.
+does not spawn ffmpeg for YouTube. HTTP MPEG remuxes to webm/opus at
+open through PATH ffmpeg, then plays as WebmOpus. SoundCloud HLS still
+uses PATH ffmpeg at play (`StreamType.Arbitrary`).
 
 ## Remaining
 
 - Playable InnerTube / YouTube bot checks. This run got a yambot
-  metadata resolve (868 ms); Lavalink load timed out. Hear-audio still
+  metadata resolve (119 ms); Lavalink load timed out. Hear-audio still
   can’t tell yet from a Cloud Agent.
-- ffmpeg spawn for SoundCloud HLS and HTTP MPEG (HTTP scale cliff).
+- SoundCloud HLS still spawns ffmpeg at play. HTTP mpeg remux still
+  hitchs the event loop if you scale that path.
 - Skip immediately after enqueue still waits for an in-flight open.
 - Discord UDP / DAVE send and audible TTFA: human smoke only.
 
