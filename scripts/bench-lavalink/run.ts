@@ -26,6 +26,7 @@ import {
   winnerMarkdown,
   type WinnerRow,
 } from "../../packages/audio-engine/src/bench/winner.ts";
+import { stopHttpRemuxPool } from "@yambot/audio-engine";
 import { LavalinkClient, type LoadOutcome } from "./client.ts";
 import { LIVE_SOUNDCLOUD_URL, LIVE_YOUTUBE_URL, LAVALINK_VERSION } from "./pin.ts";
 import {
@@ -68,6 +69,11 @@ interface LiveAttempt {
   readonly lavalink: SampleSummary | null;
   readonly yambotError: string | null;
   readonly lavalinkError: string | null;
+}
+
+interface LiveHalf {
+  readonly summary: SampleSummary | null;
+  readonly error: string | null;
 }
 
 interface LavalinkScalePoint {
@@ -138,8 +144,8 @@ export async function runVsLavalinkAsync(
   let ll: LavalinkProcess | undefined;
   let client: LavalinkClient | undefined;
   let lavalinkHttp: LavalinkHttpMetrics | null = null;
-  let youtubeLive: LiveAttempt = emptyLive("not run");
-  let soundcloudLive: LiveAttempt = emptyLive("not run");
+  let lavalinkYoutube: LiveHalf = { summary: null, error: "not run" };
+  let lavalinkSoundcloud: LiveHalf = { summary: null, error: "not run" };
   let lavalinkScale: readonly LavalinkScalePoint[] | null = null;
   let lavalinkNote: string = "Lavalink multi-player not measured.";
   try {
@@ -168,13 +174,16 @@ export async function runVsLavalinkAsync(
       lavalinkNote = `Lavalink multi-player not measured: ${lavalinkHttp.playError ?? "no encoded track"}.`;
       notes.push(lavalinkNote);
     }
-    log("live YouTube/SoundCloud load (12s cap)…");
-    youtubeLive = await attemptLiveAsync(client, LIVE_YOUTUBE_URL);
-    soundcloudLive = await attemptLiveAsync(client, LIVE_SOUNDCLOUD_URL);
+    log("Lavalink live YouTube/SoundCloud load (12s cap)…");
+    lavalinkYoutube = await attemptLavalinkLiveAsync(client, LIVE_YOUTUBE_URL);
+    lavalinkSoundcloud = await attemptLavalinkLiveAsync(
+      client,
+      LIVE_SOUNDCLOUD_URL,
+    );
   } catch (error) {
     notes.push(`Lavalink harness: ${errorMessage(error)}`);
-    youtubeLive = emptyLive(errorMessage(error));
-    soundcloudLive = youtubeLive;
+    lavalinkYoutube = { summary: null, error: errorMessage(error) };
+    lavalinkSoundcloud = lavalinkYoutube;
   } finally {
     client?.close();
     if (ll !== undefined) {
@@ -182,6 +191,14 @@ export async function runVsLavalinkAsync(
       await Bun.sleep(400);
     }
   }
+  log("measuring yambot HTTP fixture…");
+  const yambotHttp: YambotHttpMetrics = await measureYambotHttpAsync({
+    urlA: fixtures.urlA,
+    urlB: fixtures.urlB,
+    n,
+    holdMs: HOLD_MS,
+  });
+  stopHttpRemuxPool();
   log("measuring yambot webm/opus scale…");
   const yambotScale: LoadReport = await runLoadBench({
     mode: "webm",
@@ -190,13 +207,15 @@ export async function runVsLavalinkAsync(
     queueDepth: 50,
     skipStorms: 3,
   });
-  log("measuring yambot HTTP fixture…");
-  const yambotHttp: YambotHttpMetrics = await measureYambotHttpAsync({
-    urlA: fixtures.urlA,
-    urlB: fixtures.urlB,
-    n,
-    holdMs: HOLD_MS,
-  });
+  log("yambot live YouTube/SoundCloud load (12s cap)…");
+  const youtubeLive: LiveAttempt = await mergeLiveAsync(
+    LIVE_YOUTUBE_URL,
+    lavalinkYoutube,
+  );
+  const soundcloudLive: LiveAttempt = await mergeLiveAsync(
+    LIVE_SOUNDCLOUD_URL,
+    lavalinkSoundcloud,
+  );
   fixtures.server.stop();
   removeSineFixture(fixtures.sine);
   if (ll !== undefined) {
@@ -485,33 +504,36 @@ async function measureLavalinkScalePointAsync(
   };
 }
 
-async function attemptLiveAsync(
+async function attemptLavalinkLiveAsync(
   client: LavalinkClient,
   url: string,
-): Promise<LiveAttempt> {
-  const yambot = await attemptYambotLiveLoadAsync(url);
-  const startedAt: number = performance.now();
+): Promise<LiveHalf> {
   const loaded: LoadOutcome = await client.loadTracksAsync(url);
-  const lavalinkElapsed: number = performance.now() - startedAt;
   if (!loaded.ok || loaded.encoded === null) {
-    return {
-      yambot: yambot.summary,
-      lavalink: null,
-      yambotError: yambot.error,
-      lavalinkError: loaded.error ?? "loadtracks failed",
-    };
+    return { summary: null, error: loaded.error ?? "loadtracks failed" };
   }
   return {
-    yambot: yambot.summary,
-    lavalink: {
+    summary: {
       n: 1,
       p50: round3(loaded.elapsedMs),
       p95: round3(loaded.elapsedMs),
       min: round3(loaded.elapsedMs),
-      max: round3(lavalinkElapsed),
+      max: round3(loaded.elapsedMs),
     },
+    error: null,
+  };
+}
+
+async function mergeLiveAsync(
+  url: string,
+  lavalink: LiveHalf,
+): Promise<LiveAttempt> {
+  const yambot = await attemptYambotLiveLoadAsync(url);
+  return {
+    yambot: yambot.summary,
+    lavalink: lavalink.summary,
     yambotError: yambot.error,
-    lavalinkError: null,
+    lavalinkError: lavalink.error,
   };
 }
 
@@ -549,15 +571,6 @@ async function startHttpFixturesAsync(): Promise<HttpFixtures> {
     urlA: `${baseUrl}/a-${fileName}`,
     urlB: `${baseUrl}/b-${fileName}`,
     server,
-  };
-}
-
-function emptyLive(reason: string): LiveAttempt {
-  return {
-    yambot: null,
-    lavalink: null,
-    yambotError: reason,
-    lavalinkError: reason,
   };
 }
 

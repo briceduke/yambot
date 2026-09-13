@@ -168,6 +168,13 @@ interface MeasureInput {
 async function measurePointAsync(input: MeasureInput): Promise<LoadPoint> {
   const histogram = monitorEventLoopDelay({ resolution: 1 });
   histogram.enable();
+  if (input.mode !== "mock" && input.sessions === 1) {
+    const warmSamples: number[] = [];
+    const warm = await startSessionAsync(-1, input, warmSamples);
+    if (warm !== null) {
+      dropSession(warm.guildId);
+    }
+  }
   const cpuStart = process.cpuUsage();
   const wallStart: number = performance.now();
   const handles: SessionHandle[] = [];
@@ -334,8 +341,8 @@ function createEngine(input: MeasureInput): EnginePort {
   if (input.mode === "http" && input.fixture?.kind === "http") {
     return new LiveHttpEngine();
   }
-  if (input.fixture !== null) {
-    return new FileEngine(readFileSync(input.fixture.sine.path), "webm/opus");
+  if (input.fixture?.kind === "webm") {
+    return new FileEngine(input.fixture.bytes, "webm/opus");
   }
   return new InstantEngine();
 }
@@ -421,7 +428,7 @@ async function waitUntilAsync(
 }
 
 type PreparedFixture =
-  | { readonly kind: "webm"; readonly sine: SineFixture }
+  | { readonly kind: "webm"; readonly sine: SineFixture; readonly bytes: Buffer }
   | {
       readonly kind: "http";
       readonly sine: SineFixture;
@@ -441,7 +448,7 @@ async function setupFixtureAsync(
     if (sine === null) {
       return null;
     }
-    return { kind: "webm", sine };
+    return { kind: "webm", sine, bytes: readFileSync(sine.path) };
   }
   const mp3 = writeSineFixture({
     fileName: "sine.mp3",
