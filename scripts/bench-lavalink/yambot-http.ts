@@ -2,6 +2,7 @@ import {
   openTrackAudio,
   prewarmHttpRemuxAsync,
   resolveTrack,
+  stopHttpRemuxPool,
   type Track,
 } from "@yambot/audio-engine";
 import {
@@ -70,6 +71,7 @@ export async function measureYambotHttpAsync(input: {
   }
   const skip_ms: SampleSummary = summarizeSamples(skipSamples);
   const cpu_pct: number | null = await measureCpuAsync(input.urlA, input.holdMs);
+  stopHttpRemuxPool();
   const memory = process.memoryUsage();
   return {
     load_ms,
