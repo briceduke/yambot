@@ -14,21 +14,26 @@ Method, caveats, and full tables: `PERF.md`.
 
 | What | yambot | Lavalink | Winner |
 |------|-------:|---------:|--------|
-| HTTP load p50 | 0.007 ms | 2.3 ms | yambot |
-| HTTP first frame / skip p50 | 0.48 / 1.3 ms | 2.7 / 3.0 ms | yambot |
-| RSS / CPU | 130 MB / 1.9% | 306 MB / 3.5% | yambot |
-| Scale TTFA p50 at N=1 / 10 / 50 | 0.8 / 3.2 / 17 ms | 4.2 / 9.9 / 47 ms | yambot |
+| HTTP load p50 | 0.005 ms | 2.6 ms | yambot |
+| HTTP first frame / skip p50 | 0.43 / 1.1 ms | 2.9 / 3.5 ms | yambot |
+| RSS / CPU | 126 MB / 1.4% | 302 MB / 2.5% | yambot |
+| Scale TTFA p50 at N=1 / 10 / 50 | 0.8 / 3.6 / 16 ms | 3.3 / 12 / 50 ms | yambot |
 | Scale N=100 | 100/100 play, 0 fail | ~19/100 TrackStart, ~81% timeout | yambot |
 | Live YouTube hear-audio | — | — | can't tell yet |
 
-Cuts on this branch (injected bench vs itself): resolve-then-open
-**−50%**, play-to-current **−31%**, skip with prefetch **−98%**.
+Injected bench vs the pre-cut hot path: resolve-then-open **−50%**,
+play-to-current **−31%**, skip with prefetch **−98%**. This pass held
+those wins and cut the remux pool, duplicate play door, and HTTP load
+mode.
 
 ```
 bun run bench:perf          # Java-free; CI-safe
 bun run bench:load          # N-session scale (no Java)
 bun run bench:vs-lavalink   # opt-in JDK; not required to run the bot
 ```
+
+Flags and methodology live in `PERF.md`. `bench:vs-lavalink` needs a
+JDK; see `scripts/bench-lavalink/README.md`. Never run it from CI.
 
 ## Need
 
@@ -59,12 +64,6 @@ Slash commands `/play`, `/scsearch`, `/skip`, `/queue`, `/pause`, `/resume`, `/n
 `/play` accepts a YouTube URL, a YouTube playlist URL, a SoundCloud track URL, a SoundCloud set URL, an HTTP stream URL, or YouTube search words. `/scsearch` searches SoundCloud and plays the top hit.
 
 `bun run dev` starts the same bot with Node `--watch` (restarts on file change).
-
-## Playback benches
-
-See **Performance** above. Flags and methodology live in `PERF.md`.
-`bench:vs-lavalink` needs a JDK; see `scripts/bench-lavalink/README.md`.
-Never run it from CI.
 
 ## Commands
 

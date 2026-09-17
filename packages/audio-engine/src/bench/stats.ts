@@ -88,3 +88,24 @@ export function sleepAsync(delayMs: number): Promise<void> {
     setTimeout(resolve, delayMs);
   });
 }
+
+/**
+ * Converts a byte count to mebibytes, rounded to two decimals.
+ * @param bytes - RSS or heap bytes.
+ * @returns MiB.
+ */
+export function bytesToMb(bytes: number): number {
+  return Math.round((bytes / (1024 * 1024)) * 100) / 100;
+}
+
+/**
+ * Reads an Error message, or String() for other values.
+ * @param error - Caught value.
+ * @returns Message text.
+ */
+export function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}

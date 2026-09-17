@@ -26,7 +26,6 @@ import {
   winnerMarkdown,
   type WinnerRow,
 } from "../../packages/audio-engine/src/bench/winner.ts";
-import { stopHttpRemuxPool } from "@yambot/audio-engine";
 import { LavalinkClient, type LoadOutcome } from "./client.ts";
 import { LIVE_SOUNDCLOUD_URL, LIVE_YOUTUBE_URL, LAVALINK_VERSION } from "./pin.ts";
 import {
@@ -198,7 +197,6 @@ export async function runVsLavalinkAsync(
     n,
     holdMs: HOLD_MS,
   });
-  stopHttpRemuxPool();
   log("measuring yambot webm/opus scale…");
   const yambotScale: LoadReport = await runLoadBench({
     mode: "webm",

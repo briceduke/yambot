@@ -57,6 +57,16 @@ export function mapHttpPlayError(error: unknown): Error {
   return mapFfmpegPlayError(error, HTTP_FFMPEG_MISS);
 }
 
+function mapPlayError(error: unknown, format: AudioFormat): Error {
+  if (format === "hls/aac") {
+    return mapHlsPlayError(error);
+  }
+  if (format === "http/mpeg") {
+    return mapHttpPlayError(error);
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 /**
  * Builds a Discord-backed voice port for one guild.
  * @param guild - Guild whose voice adapter and channel cache to use.
@@ -136,13 +146,7 @@ class DiscordVoicePort implements VoicePort {
       });
       this.#player.play(resource);
     } catch (error) {
-      if (audio.format === "hls/aac") {
-        throw mapHlsPlayError(error);
-      }
-      if (audio.format === "http/mpeg") {
-        throw mapHttpPlayError(error);
-      }
-      throw error instanceof Error ? error : new Error(String(error));
+      throw mapPlayError(error, audio.format);
     }
   }
 
