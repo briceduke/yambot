@@ -7,17 +7,25 @@ import {
   StreamType,
   VoiceConnectionStatus,
   type AudioPlayer,
+  type AudioResource,
   type DiscordGatewayAdapterCreator,
+  type NoSubscriberBehavior,
   type VoiceConnection,
   type VoiceConnectionState,
 } from "@discordjs/voice";
 import type { AudioFormat, TrackAudio } from "@yambot/audio-engine";
 import type { Guild } from "discord.js";
-import { Readable } from "node:stream";
+import { PassThrough, pipeline, Readable } from "node:stream";
 
 import type { VoicePort } from "./guild-music-session.ts";
 
 const JOIN_READY_TIMEOUT_MS = 20_000;
+
+/** Missed 20 ms frames before stop. 50 = 1s of silence, not Idle. */
+export const MAX_MISSED_FRAMES: number = 50;
+
+/** Bytes kept ahead of the 20 ms clock (~1s of 128 kbps webm/opus). */
+export const LIVE_BUFFER_BYTES: number = 16_384;
 
 const FFMPEG_MISS =
   "Couldn't play that SoundCloud track: ffmpeg is not installed.";
@@ -37,6 +45,67 @@ const playbackInputByFormat: { readonly [K in AudioFormat]: StreamType } = {
  */
 export function streamTypeFor(format: AudioFormat): StreamType {
   return playbackInputByFormat[format];
+}
+
+/** Optional player behavior for headless play (no voice subscriber). */
+export interface PlaybackPlayerOptions {
+  readonly noSubscriber?: NoSubscriberBehavior;
+}
+
+/**
+ * Builds the guild audio player.
+ * @param options - Optional no-subscriber behavior for benches and tests.
+ * @returns Player used by `DiscordVoicePort` and headless benches.
+ */
+export function createPlaybackPlayer(
+  options: PlaybackPlayerOptions = {},
+): AudioPlayer {
+  return createAudioPlayer({
+    behaviors: {
+      maxMissedFrames: MAX_MISSED_FRAMES,
+      ...(options.noSubscriber === undefined
+        ? {}
+        : { noSubscriber: options.noSubscriber }),
+    },
+  });
+}
+
+/**
+ * Builds a Discord audio resource from an engine stream.
+ * Live webm/opus and object-mode opus keep ~1s of slack.
+ * @param stream - Node readable of encoded audio.
+ * @param inputType - Discord input type from `streamTypeFor`.
+ * @returns Resource for `AudioPlayer.play`.
+ */
+export function createPlaybackResource(
+  stream: Readable,
+  inputType: StreamType,
+): AudioResource {
+  const input: Readable = needsLiveBuffer(inputType)
+    ? wrapLiveStream(stream)
+    : stream;
+  return createAudioResource(input, {
+    inputType,
+    inlineVolume: false,
+    silencePaddingFrames: 0,
+  });
+}
+
+function needsLiveBuffer(inputType: StreamType): boolean {
+  return inputType === StreamType.WebmOpus || inputType === StreamType.Opus;
+}
+
+function wrapLiveStream(stream: Readable): Readable {
+  const pass = new PassThrough({
+    objectMode: stream.readableObjectMode,
+    highWaterMark: stream.readableObjectMode
+      ? MAX_MISSED_FRAMES
+      : LIVE_BUFFER_BYTES,
+  });
+  pipeline(stream, pass, () => {
+    return;
+  });
+  return pass;
 }
 
 /**
@@ -78,7 +147,7 @@ export function createDiscordVoicePort(guild: Guild): VoicePort {
 
 class DiscordVoicePort implements VoicePort {
   readonly #guild: Guild;
-  readonly #player: AudioPlayer = createAudioPlayer();
+  readonly #player: AudioPlayer = createPlaybackPlayer();
   #connection: VoiceConnection | undefined;
   #channelId: string | null = null;
   #idleHandler: (() => void) | undefined;
@@ -139,11 +208,10 @@ class DiscordVoicePort implements VoicePort {
   async play(audio: TrackAudio): Promise<void> {
     const inputType: StreamType = streamTypeFor(audio.format);
     try {
-      const resource = createAudioResource(Readable.fromWeb(audio.stream), {
+      const resource = createPlaybackResource(
+        Readable.fromWeb(audio.stream),
         inputType,
-        inlineVolume: false,
-        silencePaddingFrames: 0,
-      });
+      );
       this.#player.play(resource);
     } catch (error) {
       throw mapPlayError(error, audio.format);
