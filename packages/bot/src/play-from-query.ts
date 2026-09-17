@@ -5,9 +5,17 @@ import {
   type TrackAudio,
 } from "@yambot/audio-engine";
 
-import type { CommandContext } from "./command-context.ts";
+import type {
+  CommandContext,
+  CommandReplyOptions,
+} from "./command-context.ts";
 import { formatDuration } from "./format-duration.ts";
 import type { GuildMusicSession } from "./guild-music-session.ts";
+import {
+  EMBED_COLOR,
+  replyEmbed,
+  youtubeThumbnailUrl,
+} from "./reply-embed.ts";
 
 const NOT_IN_VOICE_REPLY = "Join a voice channel first.";
 const PLAYLIST_EMPTY_REPLY = "That playlist has no playable tracks.";
@@ -59,16 +67,21 @@ async function readVoiceChannelIdOrReplyAsync(
   usageReply: string,
 ): Promise<string | null> {
   if (ctx.args === "") {
-    await ctx.reply(usageReply);
+    await ctx.reply("", errorNotice(usageReply));
     return null;
   }
   const voiceChannelId: string | null = ctx.invokerVoiceChannelId;
   if (voiceChannelId === null) {
-    await ctx.reply(NOT_IN_VOICE_REPLY);
+    await ctx.reply("", errorNotice(NOT_IN_VOICE_REPLY));
     return null;
   }
   if (session.isOccupiedInOtherChannel(voiceChannelId)) {
-    await ctx.reply(`Already playing in #${session.voiceChannelName} — join there.`);
+    await ctx.reply(
+      "",
+      errorNotice(
+        `Already playing in #${session.voiceChannelName} — join there.`,
+      ),
+    );
     return null;
   }
   return voiceChannelId;
@@ -89,10 +102,10 @@ async function resolveOrReplyAsync(
     return await session.engine.resolveTrack({ query: ctx.args });
   } catch (error) {
     if (error instanceof TrackResolveError) {
-      await ctx.reply(error.message);
+      await ctx.reply("", errorNotice(error.message));
       return null;
     }
-    await ctx.reply(input.resolveFailedReply);
+    await ctx.reply("", errorNotice(input.resolveFailedReply));
     return null;
   }
 }
@@ -106,7 +119,7 @@ async function playOrQueueAsync(
   const first: Track | undefined = result.tracks[0];
   if (first === undefined) {
     await awaitJoinOrReplyAsync(ctx, joinPromise);
-    await ctx.reply(PLAYLIST_EMPTY_REPLY);
+    await ctx.reply("", errorNotice(PLAYLIST_EMPTY_REPLY));
     return;
   }
   if (session.currentTrack !== null) {
@@ -142,11 +155,18 @@ async function playFirstOverlappingJoinAsync(
     const audio: TrackAudio = await openPromise;
     await session.playNow(first, audio);
   } catch (error) {
-    await ctx.reply(errorMessage(error));
+    await ctx.reply("", errorNotice(errorMessage(error)));
     return;
   }
   enqueueTracks(session, result.tracks.slice(1));
-  await ctx.reply(playingOrAddedReply(result, first));
+  await ctx.reply(
+    "",
+    successNotice(
+      "Playing",
+      playingOrAddedReply(result, first),
+      isSingleTrackResult(result) ? first : undefined,
+    ),
+  );
 }
 
 async function awaitJoinOrReplyAsync(
@@ -165,7 +185,10 @@ async function awaitJoinOrReplyAsync(
         })
         .catch(() => {});
     }
-    await ctx.reply(`Couldn't join voice: ${errorMessage(error)}`);
+    await ctx.reply(
+      "",
+      errorNotice(`Couldn't join voice: ${errorMessage(error)}`),
+    );
     return false;
   }
 }
@@ -178,11 +201,14 @@ async function enqueueWhileCurrentAsync(
 ): Promise<void> {
   if (isSingleTrackResult(result)) {
     const position: number = session.enqueue(first);
-    await ctx.reply(queuedReply(first, position));
+    await ctx.reply(
+      "",
+      successNotice("Queued", queuedReply(first, position), first),
+    );
     return;
   }
   enqueueTracks(session, result.tracks);
-  await ctx.reply(addedReply(result));
+  await ctx.reply("", successNotice("Added", addedReply(result)));
 }
 
 function enqueueTracks(
@@ -227,4 +253,26 @@ function errorMessage(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+function errorNotice(description: string): CommandReplyOptions {
+  return replyEmbed({ description, color: EMBED_COLOR.error });
+}
+
+function successNotice(
+  title: "Playing" | "Queued" | "Added",
+  description: string,
+  track?: Track,
+): CommandReplyOptions {
+  if (track === undefined) {
+    return replyEmbed({ description, color: EMBED_COLOR.ok, title });
+  }
+  const thumbnailUrl: string | null = youtubeThumbnailUrl(track.uri);
+  return replyEmbed({
+    description,
+    color: EMBED_COLOR.ok,
+    title,
+    url: track.uri,
+    ...(thumbnailUrl === null ? {} : { thumbnailUrl }),
+  });
 }

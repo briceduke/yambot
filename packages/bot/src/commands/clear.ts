@@ -2,6 +2,7 @@ import { SlashCommandBuilder } from "discord.js";
 
 import type { CommandContext } from "../command-context.ts";
 import { dropSession, type GuildMusicSession } from "../guild-music-session.ts";
+import { EMBED_COLOR, replyEmbed } from "../reply-embed.ts";
 
 const EMPTY_QUEUE_REPLY = "The queue is empty.";
 
@@ -23,11 +24,20 @@ export async function executeClear(
 ): Promise<void> {
   const size: number = readUpcomingSize(session);
   if (session === undefined || size === 0) {
-    await ctx.reply(EMPTY_QUEUE_REPLY);
+    await ctx.reply(
+      "",
+      replyEmbed({ color: EMBED_COLOR.error, description: EMPTY_QUEUE_REPLY }),
+    );
     return;
   }
   const n: number = session.clearUpcoming();
-  await ctx.reply(`Cleared ${n} tracks.`);
+  await ctx.reply(
+    "",
+    replyEmbed({
+      color: EMBED_COLOR.ok,
+      description: `Cleared ${n} tracks.`,
+    }),
+  );
   if (session.currentTrack === null) {
     dropSession(ctx.guildId);
   }

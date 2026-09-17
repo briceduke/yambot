@@ -2,7 +2,7 @@
 
 Stability tiers for this app. Empty on day zero. Fill during `/constitution` only when something must not change. Everything FROZEN is automatically ask first (see AGENTS.md).
 
-Nothing frozen yet (constitution, 2026-08-11): no API has shipped and nobody depends on this code. First candidate: when slice 6 ships self-host packaging, the operator command surface and config format go STABLE or ADDITIVE-ONLY for other people's installs.
+Nothing frozen yet (constitution, 2026-08-11): no API has shipped and nobody depends on this code. First candidate: when self-host packaging ships, the operator command surface and config format go STABLE or ADDITIVE-ONLY for other people's installs.
 
 | Tier | Meaning | Change policy |
 |------|---------|----------------|

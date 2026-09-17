@@ -3,6 +3,7 @@ import { SlashCommandBuilder } from "discord.js";
 
 import type { CommandContext } from "../command-context.ts";
 import type { GuildMusicSession } from "../guild-music-session.ts";
+import { EMBED_COLOR, replyEmbed, youtubeThumbnailUrl } from "../reply-embed.ts";
 
 const USAGE_REPLY = "Usage: /remove <position>";
 
@@ -31,20 +32,44 @@ export async function executeRemove(
 ): Promise<void> {
   const n: number | null = parsePositionArg(ctx.args);
   if (n === null) {
-    await ctx.reply(USAGE_REPLY);
+    await ctx.reply(
+      "",
+      replyEmbed({ color: EMBED_COLOR.error, description: USAGE_REPLY }),
+    );
     return;
   }
   const size: number = readUpcomingSize(session);
   if (session === undefined || n < 1 || n > size) {
-    await ctx.reply(`No track at position ${n}.`);
+    await ctx.reply(
+      "",
+      replyEmbed({
+        color: EMBED_COLOR.error,
+        description: `No track at position ${n}.`,
+      }),
+    );
     return;
   }
   const removed: Track | null = session.removeUpcomingAt(n - 1);
   if (removed === null) {
-    await ctx.reply(`No track at position ${n}.`);
+    await ctx.reply(
+      "",
+      replyEmbed({
+        color: EMBED_COLOR.error,
+        description: `No track at position ${n}.`,
+      }),
+    );
     return;
   }
-  await ctx.reply(`Removed: ${removed.title}`);
+  const thumbnailUrl: string | null = youtubeThumbnailUrl(removed.uri);
+  await ctx.reply(
+    "",
+    replyEmbed({
+      color: EMBED_COLOR.ok,
+      description: `Removed: ${removed.title}`,
+      url: removed.uri,
+      ...(thumbnailUrl === null ? {} : { thumbnailUrl }),
+    }),
+  );
 }
 
 function parsePositionArg(args: string): number | null {

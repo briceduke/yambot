@@ -125,6 +125,7 @@ First supervised build of each pattern to copy. Prefer a vertical slice (one thi
 | Headless load bench | `packages/bot/src/bench/load.ts` | N-session webm/opus sweep; mock is CI-safe |
 | Lavalink bake-off harness | `scripts/bench-lavalink/run.ts` | opt-in JDK, local HTTP fixtures, winner JSON |
 | Guild operator config | `packages/bot/src/operator-config.ts` | env + in-memory guild overlay; DJ check; no Discord types |
+| Command notice embed | `packages/bot/src/reply-embed.ts` | notice embeds, YouTube thumb, progress bar; reply stays text-compatible |
 
 ## Cloud types
 

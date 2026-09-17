@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import type { ResolveResult, Track, TrackAudio } from "@yambot/audio-engine";
 
-import type { CommandContext } from "../command-context.ts";
+import type { CommandContext, CommandReplyOptions } from "../command-context.ts";
 import {
   createSession,
   getSession,
   type EnginePort,
   type VoicePort,
 } from "../guild-music-session.ts";
+import { recordedReplyText } from "../reply-embed.ts";
 import { executeStop } from "./stop.ts";
 
 describe("executeStop", () => {
@@ -84,8 +85,8 @@ class FakeContext implements CommandContext {
     this.guildId = guildId;
   }
 
-  async reply(text: string): Promise<void> {
-    this.replies.push(text);
+  async reply(text: string, options?: CommandReplyOptions): Promise<void> {
+    this.replies.push(recordedReplyText(text, options));
   }
 }
 

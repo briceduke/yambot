@@ -5,6 +5,7 @@ import {
   dropSession,
   type GuildMusicSession,
 } from "../guild-music-session.ts";
+import { EMBED_COLOR, replyEmbed } from "../reply-embed.ts";
 
 const NOTHING_PLAYING_REPLY = "Nothing is playing.";
 const STOPPED_REPLY = "Stopped.";
@@ -25,21 +26,39 @@ export async function executeStop(
   session: GuildMusicSession | undefined,
 ): Promise<void> {
   if (session === undefined) {
-    await ctx.reply(NOTHING_PLAYING_REPLY);
+    await ctx.reply(
+      "",
+      replyEmbed({
+        color: EMBED_COLOR.error,
+        description: NOTHING_PLAYING_REPLY,
+      }),
+    );
     return;
   }
   if (session.currentTrack !== null) {
     session.clearUpcoming();
     dropSession(ctx.guildId);
-    await ctx.reply(STOPPED_REPLY);
+    await ctx.reply(
+      "",
+      replyEmbed({ color: EMBED_COLOR.ok, description: STOPPED_REPLY }),
+    );
     return;
   }
   if (isIdleLeaveWait(session)) {
     dropSession(ctx.guildId);
-    await ctx.reply(STOPPED_REPLY);
+    await ctx.reply(
+      "",
+      replyEmbed({ color: EMBED_COLOR.ok, description: STOPPED_REPLY }),
+    );
     return;
   }
-  await ctx.reply(NOTHING_PLAYING_REPLY);
+  await ctx.reply(
+    "",
+    replyEmbed({
+      color: EMBED_COLOR.error,
+      description: NOTHING_PLAYING_REPLY,
+    }),
+  );
 }
 
 function isIdleLeaveWait(session: GuildMusicSession): boolean {

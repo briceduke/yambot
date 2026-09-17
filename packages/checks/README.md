@@ -2,7 +2,7 @@
 
 Scanners that enforce the app constitution: folder rules and the engine/bot seam.
 
-Empty folder rules = healthy greenfield stamp. Add conformance or invariant scanners later only when `/constitution` invents a real rule — do not ship empty scanners “for later.”
+Add conformance or invariant scanners only when `/constitution` invents a real rule. Do not ship empty scanners “for later.”
 
 ## Scanners
 
@@ -13,6 +13,13 @@ Empty folder rules = healthy greenfield stamp. Add conformance or invariant scan
 
 ## Commands
 
+From the app root:
+
+```bash
+bun run checks
+bun run checks:structure
+```
+
 From this package directory:
 
 ```bash
@@ -22,5 +29,3 @@ bun run check:structure
 bun run typecheck
 bun test
 ```
-
-From the app root after stamp: `bun run checks` or `bun run checks:structure`.

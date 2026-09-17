@@ -2,6 +2,7 @@ import { SlashCommandBuilder } from "discord.js";
 
 import type { CommandContext } from "../command-context.ts";
 import { setGuildOverlayDjRoleId } from "../operator-config.ts";
+import { EMBED_COLOR, replyEmbed } from "../reply-embed.ts";
 
 const USAGE_REPLY = "Usage: /setdj <role>";
 const SNOWFLAKE_PATTERN = /^\d{17,20}$/;
@@ -26,16 +27,31 @@ export const setdjSlashData = new SlashCommandBuilder()
 export async function executeSetDj(ctx: CommandContext): Promise<void> {
   const parsed: string | "none" | null = parseRoleArg(ctx.args);
   if (parsed === null) {
-    await ctx.reply(USAGE_REPLY);
+    await ctx.reply(
+      "",
+      replyEmbed({ description: USAGE_REPLY, color: EMBED_COLOR.error }),
+    );
     return;
   }
   if (parsed === "none") {
     setGuildOverlayDjRoleId(ctx.guildId, null);
-    await ctx.reply("DJ role cleared. DJ commands are open.");
+    await ctx.reply(
+      "",
+      replyEmbed({
+        description: "DJ role cleared. DJ commands are open.",
+        color: EMBED_COLOR.ok,
+      }),
+    );
     return;
   }
   setGuildOverlayDjRoleId(ctx.guildId, parsed);
-  await ctx.reply(`DJ role set to <@&${parsed}>.`);
+  await ctx.reply(
+    "",
+    replyEmbed({
+      description: `DJ role set to <@&${parsed}>.`,
+      color: EMBED_COLOR.ok,
+    }),
+  );
 }
 
 function parseRoleArg(args: string): string | "none" | null {

@@ -1,7 +1,5 @@
 import {
   AudioPlayerStatus,
-  createAudioPlayer,
-  createAudioResource,
   entersState,
   NoSubscriberBehavior,
   type AudioPlayer,
@@ -9,7 +7,11 @@ import {
 import type { TrackAudio } from "@yambot/audio-engine";
 import { Readable } from "node:stream";
 
-import { streamTypeFor } from "../discord-voice.ts";
+import {
+  createPlaybackPlayer,
+  createPlaybackResource,
+  streamTypeFor,
+} from "../discord-voice.ts";
 import type { VoicePort } from "../guild-music-session.ts";
 
 const PLAYING_TIMEOUT_MS = 10_000;
@@ -29,8 +31,8 @@ export class HeadlessVoicePort implements VoicePort {
    */
   constructor(waitUntilPlaying: boolean) {
     this.#waitUntilPlaying = waitUntilPlaying;
-    this.#player = createAudioPlayer({
-      behaviors: { noSubscriber: NoSubscriberBehavior.Play },
+    this.#player = createPlaybackPlayer({
+      noSubscriber: NoSubscriberBehavior.Play,
     });
     this.#player.on("stateChange", (oldState, newState) => {
       if (newState.status === AudioPlayerStatus.Paused) {
@@ -58,11 +60,10 @@ export class HeadlessVoicePort implements VoicePort {
   }
 
   async play(audio: TrackAudio): Promise<void> {
-    const resource = createAudioResource(Readable.fromWeb(audio.stream), {
-      inputType: streamTypeFor(audio.format),
-      inlineVolume: false,
-      silencePaddingFrames: 0,
-    });
+    const resource = createPlaybackResource(
+      Readable.fromWeb(audio.stream),
+      streamTypeFor(audio.format),
+    );
     this.#player.play(resource);
     if (!this.#waitUntilPlaying) {
       return;

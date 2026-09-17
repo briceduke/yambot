@@ -3,6 +3,7 @@ import { SlashCommandBuilder } from "discord.js";
 import type { CommandContext } from "../command-context.ts";
 import type { GuildOperatorView } from "../operator-config.ts";
 import { getGuildOperatorView } from "../operator-config.ts";
+import { EMBED_COLOR, replyEmbed } from "../reply-embed.ts";
 
 /** Slash command payload for `/settings`. */
 export const settingsSlashData = new SlashCommandBuilder()
@@ -19,7 +20,14 @@ export async function executeSettings(ctx: CommandContext): Promise<void> {
     ctx.guildId,
     process.env,
   );
-  await ctx.reply(formatSettingsBody(view));
+  await ctx.reply(
+    "",
+    replyEmbed({
+      title: "Settings",
+      color: EMBED_COLOR.info,
+      description: formatSettingsBody(view),
+    }),
+  );
 }
 
 function formatSettingsBody(view: GuildOperatorView): string {

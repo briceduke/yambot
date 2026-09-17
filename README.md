@@ -1,39 +1,21 @@
 # yambot
 
-Discord music bot. Play YouTube audio in a voice channel. No Java.
+yambot means “yet another music bot”. Discord music bot you run yourself. The usual recipe is Java plus Lavalink. We skipped both, on purpose. No JVM, no lavaplayer, nothing to install besides Node. `bun run bench:vs-lavalink` may spawn a JDK; that is only so the scoreboard has a loser.
 
 ## Performance
 
-yambot plays in one Node process. No JVM, no Lavalink sidecar. YouTube
-audio stays webm/opus and does not spawn ffmpeg. Play and skip are
-fast. On this VM, 100 headless guild sessions stay at 0 fail; Lavalink
-timed out on about 80% of players at N=100.
+Lavalink lost. Same VM, Lavalink 4.2.2, local HTTP mpeg, n = 10. yambot wins load, first frame, skip, RSS, and CPU. At N = 100 sessions Lavalink fail_rate is 0.81; yambot is 0. Method and full tables: `PERF.md`.
 
-Same-machine bake-off vs Lavalink 4.2.2 (local HTTP fixture, n=10).
-Method, caveats, and full tables: `PERF.md`.
+| Metric | yambot | Lavalink |
+|--------|-------:|---------:|
+| HTTP load p50 (ms) | 0.005 | 2.557 |
+| First frame p50 (ms) | 0.425 | 2.884 |
+| Skip p50 (ms) | 1.11 | 3.462 |
+| RSS (MB) | 126.37 | 301.63 |
+| CPU (%) | 1.37 | 2.5 |
+| Scale N=100 fail_rate | 0 | 0.81 |
 
-| What | yambot | Lavalink | Winner |
-|------|-------:|---------:|--------|
-| HTTP load p50 | 0.005 ms | 2.6 ms | yambot |
-| HTTP first frame / skip p50 | 0.43 / 1.1 ms | 2.9 / 3.5 ms | yambot |
-| RSS / CPU | 126 MB / 1.4% | 302 MB / 2.5% | yambot |
-| Scale TTFA p50 at N=1 / 10 / 50 | 0.8 / 3.6 / 16 ms | 3.3 / 12 / 50 ms | yambot |
-| Scale N=100 | 100/100 play, 0 fail | ~19/100 TrackStart, ~81% timeout | yambot |
-| Live YouTube hear-audio | — | — | can't tell yet |
-
-Injected bench vs the pre-cut hot path: resolve-then-open **−50%**,
-play-to-current **−31%**, skip with prefetch **−98%**. This pass held
-those wins and cut the remux pool, duplicate play door, and HTTP load
-mode.
-
-```
-bun run bench:perf          # Java-free; CI-safe
-bun run bench:load          # N-session scale (no Java)
-bun run bench:vs-lavalink   # opt-in JDK; not required to run the bot
-```
-
-Flags and methodology live in `PERF.md`. `bench:vs-lavalink` needs a
-JDK; see `scripts/bench-lavalink/README.md`. Never run it from CI.
+yambot plays in one Node process. YouTube webm/opus does not spawn ffmpeg. Put ffmpeg on PATH for SoundCloud or HTTP streams.
 
 ## Need
 

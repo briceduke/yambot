@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ResolveResult } from "@yambot/audio-engine";
 
-import type { CommandContext } from "./command-context.ts";
+import type { CommandContext, CommandReplyOptions } from "./command-context.ts";
 import {
   ADMIN_DENY_REPLY,
   DJ_DENY_REPLY,
@@ -18,6 +18,7 @@ import {
   setGuildOverlayVoiceChannelId,
 } from "./operator-config.ts";
 import { registeredSlashNames } from "./register-commands.ts";
+import { recordedReplyText } from "./reply-embed.ts";
 
 describe("dispatchCommand", () => {
   test("slash-like and prefix-like play both run executePlay", async () => {
@@ -434,8 +435,8 @@ class FakeContext implements CommandContext {
     this.invokerVoiceChannelId = input.invokerVoiceChannelId;
   }
 
-  async reply(text: string): Promise<void> {
-    this.replies.push(text);
+  async reply(text: string, options?: CommandReplyOptions): Promise<void> {
+    this.replies.push(recordedReplyText(text, options));
   }
 }
 

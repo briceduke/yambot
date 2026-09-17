@@ -2,6 +2,7 @@ import { ChannelType, SlashCommandBuilder } from "discord.js";
 
 import type { CommandContext } from "../command-context.ts";
 import { setGuildOverlayVoiceChannelId } from "../operator-config.ts";
+import { EMBED_COLOR, replyEmbed } from "../reply-embed.ts";
 
 const USAGE_REPLY = "Usage: /setvc <channel>";
 const SNOWFLAKE_PATTERN = /^\d{17,20}$/;
@@ -27,16 +28,31 @@ export const setvcSlashData = new SlashCommandBuilder()
 export async function executeSetVc(ctx: CommandContext): Promise<void> {
   const parsed: string | "none" | null = parseChannelArg(ctx.args);
   if (parsed === null) {
-    await ctx.reply(USAGE_REPLY);
+    await ctx.reply(
+      "",
+      replyEmbed({ description: USAGE_REPLY, color: EMBED_COLOR.error }),
+    );
     return;
   }
   if (parsed === "none") {
     setGuildOverlayVoiceChannelId(ctx.guildId, null);
-    await ctx.reply("Voice channel cleared.");
+    await ctx.reply(
+      "",
+      replyEmbed({
+        description: "Voice channel cleared.",
+        color: EMBED_COLOR.ok,
+      }),
+    );
     return;
   }
   setGuildOverlayVoiceChannelId(ctx.guildId, parsed);
-  await ctx.reply(`Voice channel set to <#${parsed}>.`);
+  await ctx.reply(
+    "",
+    replyEmbed({
+      description: `Voice channel set to <#${parsed}>.`,
+      color: EMBED_COLOR.ok,
+    }),
+  );
 }
 
 function parseChannelArg(args: string): string | "none" | null {
