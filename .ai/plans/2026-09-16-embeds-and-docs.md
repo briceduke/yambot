@@ -9,14 +9,14 @@
 
 ## Progress
 
-- [ ] Task 1: Add embed helper and widen command replies
+- [x] Task 1: Add embed helper and widen command replies
 - [ ] Task 2: Embed play-door replies
 - [ ] Task 3: Embed nowplaying
 - [ ] Task 4: Embed queue
 - [ ] Task 5: Embed skip, pause, and resume
 - [ ] Task 6: Embed remove, shuffle, clear, and stop
 - [ ] Task 7: Embed help and settings
-- [ ] Task 8: Embed prefix, setdj, settc, and setvc
+- [x] Task 8: Embed prefix, setdj, settc, and setvc
 - [x] Task 9: Rewrite README for operators
 - [x] Task 10: Strip task language from PERF.md
 - [x] Task 11: Strip task language from remaining non-`.ai/` docs

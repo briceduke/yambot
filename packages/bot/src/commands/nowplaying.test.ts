@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { Track } from "@yambot/audio-engine";
 
-import type { CommandContext } from "../command-context.ts";
+import type { CommandContext, CommandReplyOptions } from "../command-context.ts";
 import type { GuildMusicSession } from "../guild-music-session.ts";
+import { recordedReplyText } from "../reply-embed.ts";
 import { executeNowPlaying } from "./nowplaying.ts";
+
+const SAMPLE_LINE =
+  "Never Gonna Give You Up (1:05 / 3:33)\n▰▰▰▰▱▱▱▱▱▱▱▱";
 
 describe("executeNowPlaying", () => {
   test("replies nothing playing when session is missing or idle", async () => {
@@ -17,7 +21,7 @@ describe("executeNowPlaying", () => {
     expect(idleCtx.replies).toEqual(["Nothing is playing."]);
   });
 
-  test("replies Now playing with elapsed, duration, and wrapped URL", async () => {
+  test("replies Now playing with elapsed, duration, and progress bar", async () => {
     const session = new FakeSession();
     session.currentTrack = sampleTrack("Never Gonna Give You Up", 213);
     session.elapsedMs = 65_000;
@@ -25,12 +29,10 @@ describe("executeNowPlaying", () => {
 
     await executeNowPlaying(ctx, session.asGuildSession());
 
-    expect(ctx.replies).toEqual([
-      "Now playing: Never Gonna Give You Up (1:05 / 3:33)\n<https://www.youtube.com/watch?v=dQw4w9wgGcQ>",
-    ]);
+    expect(ctx.replies).toEqual([`Now playing: ${SAMPLE_LINE}`]);
   });
 
-  test("replies Paused with elapsed, duration, and wrapped URL", async () => {
+  test("replies Paused with elapsed, duration, and progress bar", async () => {
     const session = new FakeSession();
     session.currentTrack = sampleTrack("Never Gonna Give You Up", 213);
     session.elapsedMs = 65_000;
@@ -39,9 +41,7 @@ describe("executeNowPlaying", () => {
 
     await executeNowPlaying(ctx, session.asGuildSession());
 
-    expect(ctx.replies).toEqual([
-      "Paused: Never Gonna Give You Up (1:05 / 3:33)\n<https://www.youtube.com/watch?v=dQw4w9wgGcQ>",
-    ]);
+    expect(ctx.replies).toEqual([`Paused: ${SAMPLE_LINE}`]);
   });
 });
 
@@ -52,8 +52,8 @@ class FakeContext implements CommandContext {
   readonly args = "";
   readonly replies: string[] = [];
 
-  async reply(text: string): Promise<void> {
-    this.replies.push(text);
+  async reply(text: string, options?: CommandReplyOptions): Promise<void> {
+    this.replies.push(recordedReplyText(text, options));
   }
 }
 
