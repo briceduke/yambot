@@ -6,6 +6,7 @@ import {
   readOperatorEnv,
   setGuildOverlayPrefix,
 } from "../operator-config.ts";
+import { EMBED_COLOR, replyEmbed } from "../reply-embed.ts";
 
 const USAGE_REPLY = "Usage: /prefix <prefix>";
 const LENGTH_REPLY = "Prefix must be 1 to 8 characters.";
@@ -32,22 +33,43 @@ export async function executePrefix(ctx: CommandContext): Promise<void> {
   const trimmed: string = raw.trim();
   if (trimmed.length === 0) {
     if (raw.length === 0) {
-      await ctx.reply(USAGE_REPLY);
+      await ctx.reply(
+        "",
+        replyEmbed({ description: USAGE_REPLY, color: EMBED_COLOR.error }),
+      );
       return;
     }
-    await ctx.reply(LENGTH_REPLY);
+    await ctx.reply(
+      "",
+      replyEmbed({ description: LENGTH_REPLY, color: EMBED_COLOR.error }),
+    );
     return;
   }
   if (trimmed.toLowerCase() === "none") {
     clearGuildOverlayPrefix(ctx.guildId);
     const envPrefix: string = readOperatorEnv(process.env).commandPrefix;
-    await ctx.reply(`Prefix reset to \`${envPrefix}\`.`);
+    await ctx.reply(
+      "",
+      replyEmbed({
+        description: `Prefix reset to \`${envPrefix}\`.`,
+        color: EMBED_COLOR.ok,
+      }),
+    );
     return;
   }
   if (trimmed.length > MAX_PREFIX_LENGTH) {
-    await ctx.reply(LENGTH_REPLY);
+    await ctx.reply(
+      "",
+      replyEmbed({ description: LENGTH_REPLY, color: EMBED_COLOR.error }),
+    );
     return;
   }
   setGuildOverlayPrefix(ctx.guildId, trimmed);
-  await ctx.reply(`Prefix set to \`${trimmed}\`.`);
+  await ctx.reply(
+    "",
+    replyEmbed({
+      description: `Prefix set to \`${trimmed}\`.`,
+      color: EMBED_COLOR.ok,
+    }),
+  );
 }
