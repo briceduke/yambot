@@ -12,7 +12,7 @@
 - [x] Task 1: Add embed helper and widen command replies
 - [ ] Task 2: Embed play-door replies
 - [x] Task 3: Embed nowplaying
-- [ ] Task 4: Embed queue
+- [x] Task 4: Embed queue
 - [ ] Task 5: Embed skip, pause, and resume
 - [ ] Task 6: Embed remove, shuffle, clear, and stop
 - [ ] Task 7: Embed help and settings

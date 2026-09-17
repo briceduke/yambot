@@ -2,6 +2,7 @@ import { SlashCommandBuilder } from "discord.js";
 
 import type { CommandContext } from "../command-context.ts";
 import type { GuildMusicSession } from "../guild-music-session.ts";
+import { EMBED_COLOR, replyEmbed } from "../reply-embed.ts";
 
 const EMPTY_QUEUE_REPLY = "The queue is empty.";
 
@@ -22,11 +23,20 @@ export async function executeShuffle(
 ): Promise<void> {
   const n: number = readUpcomingSize(session);
   if (session === undefined || n === 0) {
-    await ctx.reply(EMPTY_QUEUE_REPLY);
+    await ctx.reply(
+      "",
+      replyEmbed({ color: EMBED_COLOR.error, description: EMPTY_QUEUE_REPLY }),
+    );
     return;
   }
   session.shuffleUpcoming();
-  await ctx.reply(`Shuffled ${n} tracks.`);
+  await ctx.reply(
+    "",
+    replyEmbed({
+      color: EMBED_COLOR.ok,
+      description: `Shuffled ${n} tracks.`,
+    }),
+  );
 }
 
 function readUpcomingSize(session: GuildMusicSession | undefined): number {
