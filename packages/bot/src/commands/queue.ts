@@ -7,6 +7,7 @@ import type {
   GuildMusicSession,
   SessionSnapshot,
 } from "../guild-music-session.ts";
+import { EMBED_COLOR, replyEmbed } from "../reply-embed.ts";
 
 const EMPTY_QUEUE_REPLY = "Nothing is playing and the queue is empty.";
 const IDLE_LEFTOVER_HEADER = "Nothing is playing.";
@@ -32,7 +33,15 @@ export async function executeQueue(
     session === undefined
       ? { current: null, upcoming: [] }
       : session.snapshot();
-  await ctx.reply(formatQueueText(snapshot));
+  const description: string = formatQueueText(snapshot);
+  if (snapshot.current === null && snapshot.upcoming.length === 0) {
+    await ctx.reply("", replyEmbed({ description, color: EMBED_COLOR.error }));
+    return;
+  }
+  await ctx.reply(
+    "",
+    replyEmbed({ title: "Queue", description, color: EMBED_COLOR.info }),
+  );
 }
 
 function formatQueueText(snapshot: SessionSnapshot): string {
