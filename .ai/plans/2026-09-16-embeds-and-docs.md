@@ -13,14 +13,14 @@
 - [x] Task 2: Embed play-door replies
 - [x] Task 3: Embed nowplaying
 - [x] Task 4: Embed queue
-- [ ] Task 5: Embed skip, pause, and resume
+- [x] Task 5: Embed skip, pause, and resume
 - [x] Task 6: Embed remove, shuffle, clear, and stop
 - [x] Task 7: Embed help and settings
 - [x] Task 8: Embed prefix, setdj, settc, and setvc
 - [x] Task 9: Rewrite README for operators
 - [x] Task 10: Strip task language from PERF.md
 - [x] Task 11: Strip task language from remaining non-`.ai/` docs
-- [ ] Task 12: Scoped proof
+- [x] Task 12: Scoped proof
 
 ## Parallel groups
 
