@@ -3,8 +3,6 @@ import { Readable, type Writable } from "node:stream";
 
 import { TrackResolveError, type TrackAudio } from "./track.ts";
 
-const POOL_SIZE = 2;
-const WARM_WAIT_MS = 50;
 const FIRST_BYTE_TIMEOUT_MS = 5_000;
 const PLAYABLE_PREFIX_BYTES = 4_096;
 const PLAY_FAILED = "Couldn't play that stream.";
@@ -42,60 +40,28 @@ const MP3_TO_WEBM_ARGS: readonly string[] = [
   "pipe:1",
 ];
 
-type RemuxWorker = ChildProcessByStdio<Writable, Readable, null>;
+type RemuxProcess = ChildProcessByStdio<Writable, Readable, null>;
 
-const idleWorkers: RemuxWorker[] = [];
 let ffmpegAvailable: boolean | null = null;
-let poolIsWarm = false;
 
 /**
- * Starts idle mp3→webm ffmpeg workers so the first HTTP open skips spawn.
- * @returns Resolves after workers exist, or immediately when ffmpeg is missing.
- */
-export async function prewarmHttpRemuxAsync(): Promise<void> {
-  if (!hasFfmpeg()) {
-    return;
-  }
-  fillPool();
-  if (poolIsWarm) {
-    return;
-  }
-  await sleepAsync(WARM_WAIT_MS);
-  poolIsWarm = true;
-}
-
-/**
- * Kills idle remux workers so benches can drop RSS after HTTP measure.
- */
-export function stopHttpRemuxPool(): void {
-  while (idleWorkers.length > 0) {
-    const worker: RemuxWorker | undefined = idleWorkers.pop();
-    worker?.kill("SIGKILL");
-  }
-  poolIsWarm = false;
-}
-
-/**
- * Remuxes HTTP MPEG to webm/opus through a warm ffmpeg worker.
- * Returns the original audio when ffmpeg is missing.
+ * Remuxes HTTP MPEG to webm/opus through PATH ffmpeg.
+ * Waits for a playable webm prefix so Discord can start without a pause.
+ * Returns the original audio when ffmpeg is missing or the format is not mpeg.
  * @param audio - Open HTTP body.
  * @returns webm/opus when remux starts, otherwise the input.
  */
 export async function remuxHttpMpegToWebmAsync(
   audio: TrackAudio,
 ): Promise<TrackAudio> {
-  if (audio.format !== "http/mpeg") {
+  if (audio.format !== "http/mpeg" || !hasFfmpeg()) {
     return audio;
   }
-  if (!hasFfmpeg()) {
+  const child: RemuxProcess | null = spawnRemuxOrNull();
+  if (child === null) {
     return audio;
   }
-  await prewarmHttpRemuxAsync();
-  const worker: RemuxWorker | null = takeWorker();
-  if (worker === null) {
-    return audio;
-  }
-  return remuxWithWorkerAsync(audio, worker);
+  return remuxWithProcessAsync(audio, child);
 }
 
 function hasFfmpeg(): boolean {
@@ -107,33 +73,11 @@ function hasFfmpeg(): boolean {
   return ffmpegAvailable;
 }
 
-function fillPool(): void {
-  while (idleWorkers.length < POOL_SIZE) {
-    const worker: RemuxWorker | null = spawnWorkerOrNull();
-    if (worker === null) {
-      return;
-    }
-    idleWorkers.push(worker);
-  }
-}
-
-function takeWorker(): RemuxWorker | null {
-  const pooled: RemuxWorker | undefined = idleWorkers.pop();
-  fillPool();
-  if (pooled !== undefined) {
-    return pooled;
-  }
-  return spawnWorkerOrNull();
-}
-
-function spawnWorkerOrNull(): RemuxWorker | null {
+function spawnRemuxOrNull(): RemuxProcess | null {
   try {
-    const child: RemuxWorker = spawn("ffmpeg", [...MP3_TO_WEBM_ARGS], {
+    const child: RemuxProcess = spawn("ffmpeg", [...MP3_TO_WEBM_ARGS], {
       stdio: ["pipe", "pipe", "ignore"],
     });
-    child.unref();
-    unrefIfPresent(child.stdin);
-    unrefIfPresent(child.stdout);
     child.once("error", () => {
       child.kill("SIGKILL");
     });
@@ -143,23 +87,23 @@ function spawnWorkerOrNull(): RemuxWorker | null {
   }
 }
 
-async function remuxWithWorkerAsync(
+async function remuxWithProcessAsync(
   audio: TrackAudio,
-  worker: RemuxWorker,
+  child: RemuxProcess,
 ): Promise<TrackAudio> {
   const nodeIn: Readable = Readable.fromWeb(audio.stream);
   nodeIn.on("error", () => {
-    worker.kill("SIGKILL");
+    child.kill("SIGKILL");
   });
-  nodeIn.pipe(worker.stdin);
+  nodeIn.pipe(child.stdin);
   try {
-    await waitBufferedPrefixAsync(worker.stdout, PLAYABLE_PREFIX_BYTES);
+    await waitBufferedPrefixAsync(child.stdout, PLAYABLE_PREFIX_BYTES);
   } catch {
-    worker.kill("SIGKILL");
+    child.kill("SIGKILL");
     throw new TrackResolveError(PLAY_FAILED);
   }
   return {
-    stream: Readable.toWeb(worker.stdout) as ReadableStream<Uint8Array>,
+    stream: Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,
     format: "webm/opus",
   };
 }
@@ -217,21 +161,5 @@ function waitBufferedPrefixAsync(
     stream.once("error", onFail);
     stream.once("end", onEnd);
     onReadable();
-  });
-}
-
-function hasUnref(stream: object): stream is { unref: () => void } {
-  return "unref" in stream && typeof stream.unref === "function";
-}
-
-function unrefIfPresent(stream: object): void {
-  if (hasUnref(stream)) {
-    stream.unref();
-  }
-}
-
-function sleepAsync(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
   });
 }

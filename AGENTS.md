@@ -118,10 +118,11 @@ First supervised build of each pattern to copy. Prefer a vertical slice (one thi
 | Pattern | First example path | What it shows |
 |---------|--------------------|---------------|
 | Core playback vertical slice | `packages/bot/src/main.ts` | command → guild session → engine resolve → audio in voice |
-| Bot command module | `packages/bot/src/commands/play.ts` | one file per command: parse input, call session, reply |
+| Bot command module | `packages/bot/src/commands/play.ts` | one file per command: slash data, copy, call the play door |
+| Shared play door | `packages/bot/src/play-from-query.ts` | join/resolve/open overlap; `/play` and `/scsearch` call it |
 | Engine source module | `packages/audio-engine/src/sources/youtube.ts` | resolve URL or search into a track; no Discord types |
 | Offline playback bench | `packages/audio-engine/src/bench/run.ts` | injected clients, JSON metrics, no Java |
-| Headless load bench | `packages/bot/src/bench/load.ts` | N-session sweep; mock is CI-safe |
+| Headless load bench | `packages/bot/src/bench/load.ts` | N-session webm/opus sweep; mock is CI-safe |
 | Lavalink bake-off harness | `scripts/bench-lavalink/run.ts` | opt-in JDK, local HTTP fixtures, winner JSON |
 
 ## Cloud types

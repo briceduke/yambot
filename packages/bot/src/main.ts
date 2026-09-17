@@ -1,4 +1,4 @@
-import { openTrackAudio, prewarmHttpRemuxAsync, resolveTrack } from "@yambot/audio-engine";
+import { openTrackAudio, resolveTrack } from "@yambot/audio-engine";
 import {
   Client,
   Events,
@@ -146,7 +146,6 @@ function startBot(): void {
   if (token.length === 0) {
     return;
   }
-  void prewarmHttpRemuxAsync();
   const client: DiscordClient = new Client({
     intents: [
       GatewayIntentBits.Guilds,

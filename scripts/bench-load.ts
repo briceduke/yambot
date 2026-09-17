@@ -54,7 +54,7 @@ function readNumber(argv: readonly string[], flag: string): number | undefined {
 
 function readMode(argv: readonly string[]): LoadMode | undefined {
   const raw: string | undefined = flagValue(argv, "--mode");
-  if (raw === "mock" || raw === "webm" || raw === "http") {
+  if (raw === "mock" || raw === "webm") {
     return raw;
   }
   return undefined;

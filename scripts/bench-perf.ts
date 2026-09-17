@@ -61,7 +61,6 @@ function markdownTable(input: {
     row("playlist_enqueue_ms engine", input.engine.playlist_enqueue_ms),
     row("ttfa_ms", input.bot.ttfa_ms),
     row("skip_ms", input.bot.skip_ms),
-    row("playlist_enqueue_ms bot queue", input.bot.playlist_enqueue_ms),
     `| rss_mb | ${input.engine.rss_mb} | | |`,
     `| heap_mb | ${input.engine.heap_mb} | | |`,
     `| cpu_pct | ${input.bot.cpu_pct ?? "n/a"} | | |`,
