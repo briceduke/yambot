@@ -183,6 +183,48 @@ describe("GuildMusicSession", () => {
     expect(session.snapshot().upcoming).toEqual([]);
   });
 
+  test("skip uses prefetched audio so it does not wait a second open", async () => {
+    const voice = new FakeVoice();
+    let opens = 0;
+    const session = createSession({
+      guildId: "guild-prefetch-skip",
+      engine: createEngine({
+        openDelayMs: 40,
+        onOpen: () => {
+          opens += 1;
+        },
+      }),
+      voice,
+    });
+    const first = sampleTrack("one");
+    const second = sampleTrack("two", 61);
+
+    await session.playNow(first);
+    session.enqueue(second);
+    await sleepAsync(50);
+    const startedAt: number = performance.now();
+    session.skipCurrent();
+    await waitUntilAsync(() => session.currentTrack === second);
+    expect(performance.now() - startedAt).toBeLessThan(25);
+    expect(opens).toBe(2);
+    expect(voice.stopCalls).toBe(0);
+  });
+
+  test("skip while a next track exists does not stop the player first", async () => {
+    const voice = new FakeVoice();
+    const session = createSession({
+      guildId: "guild-skip-no-stop",
+      engine: createEngine(),
+      voice,
+    });
+    await session.playNow(sampleTrack("one"));
+    session.enqueue(sampleTrack("two", 61));
+    session.skipCurrent();
+    await waitUntilAsync(() => session.currentTrack?.title === "two");
+    expect(voice.stopCalls).toBe(0);
+    expect(voice.played).toHaveLength(2);
+  });
+
   test("last-track skip schedules idle leave then fire drops the session", async () => {
     const clock = new FakeIdleLeaveClock();
     const voice = new FakeVoice();
@@ -571,6 +613,7 @@ describe("GuildMusicSession", () => {
 class FakeVoice implements VoicePort {
   readonly played: TrackAudio[] = [];
   destroyed = false;
+  stopCalls = 0;
   #channelId: string | null = null;
   #idleHandler: (() => void) | undefined;
   #disconnectedHandler: (() => void) | undefined;
@@ -597,6 +640,7 @@ class FakeVoice implements VoicePort {
   }
 
   stop(): void {
+    this.stopCalls += 1;
     this.#isPlaying = false;
     this.#paused = false;
     this.#idleHandler?.();
@@ -684,10 +728,13 @@ function createEngine(
   options: {
     readonly failTitles?: ReadonlySet<string>;
     readonly stream?: ReadableStream<Uint8Array>;
+    readonly openDelayMs?: number;
+    readonly onOpen?: () => void;
   } = {},
 ): EnginePort {
   const failTitles: ReadonlySet<string> = options.failTitles ?? new Set();
   const stream: ReadableStream<Uint8Array> = options.stream ?? emptyStream();
+  const openDelayMs: number = options.openDelayMs ?? 0;
   return {
     async resolveTrack(): Promise<ResolveResult> {
       throw new Error("resolveTrack is not used in session tests");
@@ -695,6 +742,10 @@ function createEngine(
     async openTrackAudio(input: {
       readonly track: Track;
     }): Promise<TrackAudio> {
+      options.onOpen?.();
+      if (openDelayMs > 0) {
+        await sleepAsync(openDelayMs);
+      }
       if (failTitles.has(input.track.title)) {
         throw new TrackResolveError("couldn't play it");
       }
@@ -753,8 +804,8 @@ async function waitUntilAsync(isReady: () => boolean): Promise<void> {
   throw new Error("Timed out waiting for session state.");
 }
 
-function sleepAsync(): Promise<void> {
+function sleepAsync(delayMs = 0): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(resolve, 0);
+    setTimeout(resolve, delayMs);
   });
 }

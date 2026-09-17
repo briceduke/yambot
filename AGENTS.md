@@ -49,7 +49,7 @@ Router for agents in this app. Keep under ~300 lines. Put depth in `.ai/` files.
 - Add an exception list entry without a written reason. Prefer zero exceptions.
 - Import a Discord library or type inside `packages/audio-engine` (R1).
 - Make the engine depend on the bot; the arrow is bot → engine (R2).
-- Add Java in any form: JVM, Lavalink, lavaplayer, or a spawned `java` process (R3).
+- Add Java in any form as a **product or CI** dependency: JVM, Lavalink, lavaplayer, or a spawned `java` process in `bun test` / GitHub Actions (R3). Optional `scripts/bench-lavalink` may spawn Java; default tests must not.
 - Copy JMusicBot or lavaplayer internal design; parity is UX and capability only (R4).
 - Build a permanent cut: web dashboard, hosted SaaS, remote player protocol, or a public engine release.
 
@@ -63,6 +63,9 @@ Run these to prove health. The per-change-type ladder lives in Constitution §5.
 | Engine seam (R1/R2) | `bun run checks` (`engine-seam`) | Before commit; CI |
 | Typecheck | `bun run typecheck` | Any TypeScript change |
 | Tests | `bun test` (scope to the touched package) | Any logic change |
+| Perf bench | `bun run bench:perf` | Playback / resolve / open / skip changes (Java-free) |
+| Load / scale | `bun run bench:load` | Opt-in N-session sweep. CI uses mock subset in `load.test.ts` |
+| vs Lavalink | `bun run bench:vs-lavalink` | Opt-in JDK harness. Never CI |
 | Human smoke | Play a track in the test guild; hear audio; skip works | Voice, extraction, or Discord-visible change |
 
 Add conformance or invariant scripts only when constitution invents a real rule — not empty scanners “for later.” The R1/R2 scan is `engine-seam` inside `bun run checks`.
@@ -96,7 +99,7 @@ Filled by `/constitution` (2026-08-11) from `.ai/product.md` and `.ai/architectu
 3. **Hard rules (2–4):**
    - **R1 Engine stays Discord-free.** `packages/audio-engine` never imports or depends on a Discord library. It yields stream/PCM only. Check: dependency scan lands with slice 1; judge review until then.
    - **R2 One dependency arrow.** Bot depends on engine; engine never depends on bot. Check: same scan as R1.
-   - **R3 Zero Java.** No JVM, no Lavalink, no lavaplayer — not as a dependency, sidecar, or spawned process. Check: dependency review; deny anything that needs a JVM.
+   - **R3 Zero Java in the product.** No JVM, no Lavalink, no lavaplayer as a runtime dependency, sidecar, or CI step. Optional `bun run bench:vs-lavalink` may spawn a throwaway JDK. Check: dependency review; `bun test` never execs `java`.
    - **R4 Parity is UX, not internals.** Match JMusicBot behavior and capability; never copy JMusicBot or lavaplayer internal design. Check: judge review on ship; raptor pass on risky slices.
 4. **Patterns to copy:** Bot command module (one file per command) and engine source module (one module per source site). Both get minted by the slice 1 vertical cut (play path end to end). Structure rules for the two app packages now live in `packages/checks/configs/structure.ts`.
 5. **Proof ladder:**
@@ -115,8 +118,12 @@ First supervised build of each pattern to copy. Prefer a vertical slice (one thi
 | Pattern | First example path | What it shows |
 |---------|--------------------|---------------|
 | Core playback vertical slice | `packages/bot/src/main.ts` | command → guild session → engine resolve → audio in voice |
-| Bot command module | `packages/bot/src/commands/play.ts` | one file per command: parse input, call session, reply |
+| Bot command module | `packages/bot/src/commands/play.ts` | one file per command: slash data, copy, call the play door |
+| Shared play door | `packages/bot/src/play-from-query.ts` | join/resolve/open overlap; `/play` and `/scsearch` call it |
 | Engine source module | `packages/audio-engine/src/sources/youtube.ts` | resolve URL or search into a track; no Discord types |
+| Offline playback bench | `packages/audio-engine/src/bench/run.ts` | injected clients, JSON metrics, no Java |
+| Headless load bench | `packages/bot/src/bench/load.ts` | N-session webm/opus sweep; mock is CI-safe |
+| Lavalink bake-off harness | `scripts/bench-lavalink/run.ts` | opt-in JDK, local HTTP fixtures, winner JSON |
 | Guild operator config | `packages/bot/src/operator-config.ts` | env + in-memory guild overlay; DJ check; no Discord types |
 
 ## Cloud types
@@ -137,4 +144,4 @@ You cannot prove YouTube playback or voice from a Cloud Agent:
 - YouTube blocks its API from Cloud Agent IPs with an anti-bot wall (`LOGIN_REQUIRED: "Sign in to confirm you're not a bot"`) for every InnerTube client. `resolveTrack` and `openTrackAudio` reach YouTube and parse responses, but no track resolves to playable audio. This is external, not a code defect. Do not treat it as a bug or try to fix it in the engine.
 - The human smoke (play in the test guild, hear audio, skip works) needs a real `DISCORD_TOKEN`, a live guild, and a person in a voice channel. The maintainer runs it; a Cloud Agent cannot.
 
-What a Cloud Agent can prove: `bun install`, `bun run typecheck`, `bun test`, `bun run checks`, and bot startup (missing `DISCORD_TOKEN` exits 1 with the documented message; a dummy token boots the process and fails at Discord login with `TokenInvalid`).
+What a Cloud Agent can prove: `bun install`, `bun run typecheck`, `bun test`, `bun run checks`, `bun run bench:perf`, `bun run bench:load` (headless fixtures), `bun run bench:vs-lavalink` when a JDK is on PATH (opt-in; never CI), and bot startup (missing `DISCORD_TOKEN` exits 1 with the documented message; a dummy token boots the process and fails at Discord login with `TokenInvalid`). Live YouTube/SoundCloud load rows may be `can't tell yet` (bot wall). Audible Discord UDP stays human smoke.

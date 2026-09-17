@@ -57,6 +57,16 @@ export function mapHttpPlayError(error: unknown): Error {
   return mapFfmpegPlayError(error, HTTP_FFMPEG_MISS);
 }
 
+function mapPlayError(error: unknown, format: AudioFormat): Error {
+  if (format === "hls/aac") {
+    return mapHlsPlayError(error);
+  }
+  if (format === "http/mpeg") {
+    return mapHttpPlayError(error);
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 /**
  * Builds a Discord-backed voice port for one guild.
  * @param guild - Guild whose voice adapter and channel cache to use.
@@ -122,8 +132,8 @@ class DiscordVoicePort implements VoicePort {
   }
 
   /**
-   * Plays engine audio. YouTube webm/opus needs no ffmpeg. SoundCloud
-   * hls/aac and HTTP http/mpeg use PATH ffmpeg via StreamType.Arbitrary.
+   * Plays engine audio. YouTube and remuxed HTTP webm/opus need no
+   * ffmpeg. SoundCloud hls/aac and leftover HTTP mpeg use PATH ffmpeg.
    * @param audio - Stream and format from the engine.
    */
   async play(audio: TrackAudio): Promise<void> {
@@ -131,21 +141,17 @@ class DiscordVoicePort implements VoicePort {
     try {
       const resource = createAudioResource(Readable.fromWeb(audio.stream), {
         inputType,
+        inlineVolume: false,
+        silencePaddingFrames: 0,
       });
       this.#player.play(resource);
     } catch (error) {
-      if (audio.format === "hls/aac") {
-        throw mapHlsPlayError(error);
-      }
-      if (audio.format === "http/mpeg") {
-        throw mapHttpPlayError(error);
-      }
-      throw error instanceof Error ? error : new Error(String(error));
+      throw mapPlayError(error, audio.format);
     }
   }
 
   stop(): void {
-    this.#player.stop();
+    this.#player.stop(true);
   }
 
   /**
