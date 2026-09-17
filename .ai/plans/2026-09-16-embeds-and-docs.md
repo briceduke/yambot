@@ -10,7 +10,7 @@
 ## Progress
 
 - [x] Task 1: Add embed helper and widen command replies
-- [ ] Task 2: Embed play-door replies
+- [x] Task 2: Embed play-door replies
 - [x] Task 3: Embed nowplaying
 - [x] Task 4: Embed queue
 - [ ] Task 5: Embed skip, pause, and resume
