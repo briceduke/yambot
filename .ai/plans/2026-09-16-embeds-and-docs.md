@@ -15,7 +15,7 @@
 - [x] Task 4: Embed queue
 - [ ] Task 5: Embed skip, pause, and resume
 - [x] Task 6: Embed remove, shuffle, clear, and stop
-- [ ] Task 7: Embed help and settings
+- [x] Task 7: Embed help and settings
 - [x] Task 8: Embed prefix, setdj, settc, and setvc
 - [x] Task 9: Rewrite README for operators
 - [x] Task 10: Strip task language from PERF.md

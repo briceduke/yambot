@@ -6,8 +6,12 @@ import {
   type TrackAudio,
 } from "@yambot/audio-engine";
 
-import type { CommandContext } from "../command-context.ts";
+import type {
+  CommandContext,
+  CommandReplyOptions,
+} from "../command-context.ts";
 import type { EnginePort, GuildMusicSession } from "../guild-music-session.ts";
+import { recordedReplyText } from "../reply-embed.ts";
 import { executeScsearch } from "./scsearch.ts";
 
 describe("executeScsearch", () => {
@@ -210,8 +214,8 @@ class FakeContext implements CommandContext {
     this.invokerVoiceChannelId = input.invokerVoiceChannelId;
   }
 
-  async reply(text: string): Promise<void> {
-    this.replies.push(text);
+  async reply(text: string, options?: CommandReplyOptions): Promise<void> {
+    this.replies.push(recordedReplyText(text, options));
   }
 }
 
