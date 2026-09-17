@@ -1,6 +1,6 @@
 # Playback performance
 
-Same VM (Cloud Agent, 2026-09-13). After the Raptor 3 cut.
+Measured 2026-09-13 on a Cloud Agent VM.
 
 - `bun run bench:perf` — Java-free injected delays. CI-safe.
 - `bun run bench:load` — headless N-session scale. Default webm/opus.
@@ -43,14 +43,6 @@ Lower p50 wins. End-user-shaped numbers, not Node vs JVM fairness.
 HTTP `open_ms` (not a winner row) is remux spawn plus playable webm
 prefix: p50 **34.8 ms**. Decoder work sits there. TTFA is WebmOpus
 Playing of that ready stream.
-
-### Call for Brice (30 seconds)
-
-- **yambot wins every measurable row** on this VM: HTTP load, first-frame
-  TTFA, skip, RSS, CPU, and scale TTFA/RSS at N = 1, 10, 50, 100.
-- **Can't tell yet:** playable live YouTube/SoundCloud vs Lavalink
-  (Lavalink `loadtracks` hit the 12 s cap; yambot metadata resolve
-  returned). Audible Discord UDP.
 
 ### Method notes
 
@@ -126,7 +118,7 @@ set. Voice is mocked. Injected delays: join 40 ms, resolve 40 ms, open
 | heap_mb | 13.89 | | |
 | cpu_pct | 1.89 | | |
 
-Held vs the post-#10 injected table (resolve-then-open −50%, play-to-current
+Held vs the earlier injected table (resolve-then-open −50%, play-to-current
 −31%, skip −98%). Same-session `bench:vs-lavalink` re-ran this harness:
 ttfa p50 90.312, skip p50 1.092.
 
@@ -135,9 +127,9 @@ join, resolve, and open together; session prefetches the next
 `openTrackAudio`; playlist continuation stops at `>= 1000` playable;
 HLS segments pull body chunks instead of `arrayBuffer` per segment.
 
-Cut after #10 (this pass): idle remux worker pool, 50 ms warm sleep,
-bot-start prewarm, duplicate play/scsearch door, duplicate bench stats,
-HTTP mpeg load mode (cliffed at N=1; not a winner row).
+Not in the tree: idle remux worker pool, 50 ms warm sleep, bot-start
+prewarm, duplicate play/scsearch door, duplicate bench stats, HTTP mpeg
+load mode (cliffed at N=1; not a winner row).
 
 ## LavaPlayer map
 
