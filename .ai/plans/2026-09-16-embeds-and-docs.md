@@ -19,7 +19,7 @@
 - [ ] Task 8: Embed prefix, setdj, settc, and setvc
 - [x] Task 9: Rewrite README for operators
 - [x] Task 10: Strip task language from PERF.md
-- [ ] Task 11: Strip task language from remaining non-`.ai/` docs
+- [x] Task 11: Strip task language from remaining non-`.ai/` docs
 - [ ] Task 12: Scoped proof
 
 ## Parallel groups

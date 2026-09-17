@@ -6,6 +6,7 @@ import {
   GuildMember,
   PermissionFlagsBits,
   Routes,
+  type APIEmbed,
   type ChatInputCommandInteraction,
   type Client as DiscordClient,
   type CloseEvent,
@@ -17,7 +18,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { CommandContext } from "./command-context.ts";
+import type { CommandContext, CommandReplyOptions } from "./command-context.ts";
 import { executeClear } from "./commands/clear.ts";
 import { executeHelp } from "./commands/help.ts";
 import { executeNowPlaying } from "./commands/nowplaying.ts";
@@ -54,6 +55,7 @@ import {
   type PrefixParseInput,
 } from "./prefix.ts";
 import { registerGuildCommands } from "./register-commands.ts";
+import { EMBED_COLOR, replyEmbed } from "./reply-embed.ts";
 import {
   exitIfDisallowedIntents,
   requireDiscordToken,
@@ -321,7 +323,10 @@ async function runDoorCommand(
     boundVoiceChannelName: readBoundVoiceChannelName(guild),
   });
   if (denyReply !== null) {
-    await ctx.reply(denyReply);
+    await ctx.reply(
+      "",
+      replyEmbed({ color: EMBED_COLOR.error, description: denyReply }),
+    );
     return;
   }
   if (name === "play" || name === "scsearch") {
@@ -368,11 +373,11 @@ function createSlashContext(
       interaction.user.id,
     ),
     args: readSlashArgs(interaction),
-    reply: async (text: string): Promise<void> => {
-      await interaction.editReply({
-        content: text,
-        allowedMentions: suppressedMentions,
-      });
+    reply: async (
+      text: string,
+      options?: CommandReplyOptions,
+    ): Promise<void> => {
+      await interaction.editReply(buildPublicReplyPayload(text, options));
     },
   };
 }
@@ -414,8 +419,11 @@ function createPrefixContext(
       message.author.id,
     ),
     args,
-    reply: async (text: string): Promise<void> => {
-      await sendPublic(message.channel, text);
+    reply: async (
+      text: string,
+      options?: CommandReplyOptions,
+    ): Promise<void> => {
+      await sendPublic(message.channel, text, options);
     },
   };
 }
@@ -491,21 +499,38 @@ function bindAnnounceFromChannel(
   channel: ChatInputCommandInteraction["channel"] | Message["channel"],
 ): void {
   session.bindAnnounce(async (text: string): Promise<void> => {
-    await sendPublic(channel, text);
+    await sendPublic(
+      channel,
+      "",
+      replyEmbed({ color: EMBED_COLOR.ok, description: text }),
+    );
   });
 }
 
 async function sendPublic(
   channel: ChatInputCommandInteraction["channel"] | Message["channel"],
   text: string,
+  options?: CommandReplyOptions,
 ): Promise<void> {
   if (channel === null || !channel.isSendable()) {
     return;
   }
-  await channel.send({
-    content: text,
+  await channel.send(buildPublicReplyPayload(text, options));
+}
+
+function buildPublicReplyPayload(
+  text: string,
+  options?: CommandReplyOptions,
+): {
+  readonly content?: string;
+  readonly embeds?: APIEmbed[];
+  readonly allowedMentions: typeof suppressedMentions;
+} {
+  return {
+    ...(text !== "" ? { content: text } : {}),
+    ...(options?.embeds === undefined ? {} : { embeds: [...options.embeds] }),
     allowedMentions: suppressedMentions,
-  });
+  };
 }
 
 function isExecutedAsMain(): boolean {
