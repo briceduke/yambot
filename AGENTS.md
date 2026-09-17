@@ -124,6 +124,7 @@ First supervised build of each pattern to copy. Prefer a vertical slice (one thi
 | Offline playback bench | `packages/audio-engine/src/bench/run.ts` | injected clients, JSON metrics, no Java |
 | Headless load bench | `packages/bot/src/bench/load.ts` | N-session webm/opus sweep; mock is CI-safe |
 | Lavalink bake-off harness | `scripts/bench-lavalink/run.ts` | opt-in JDK, local HTTP fixtures, winner JSON |
+| Guild operator config | `packages/bot/src/operator-config.ts` | env + in-memory guild overlay; DJ check; no Discord types |
 
 ## Cloud types
 
