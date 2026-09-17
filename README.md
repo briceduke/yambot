@@ -1,10 +1,21 @@
 # yambot
 
-yambot means “yet another music bot”. Discord music bot you run yourself. You do not need Java to run the bot: no JVM, no Lavalink, no lavaplayer. `bun run bench:vs-lavalink` may use a JDK; that is not required to run the bot.
+yambot means “yet another music bot”. Discord music bot you run yourself. The usual recipe is Java plus Lavalink. We skipped both, on purpose. No JVM, no lavaplayer, nothing to install besides Node. `bun run bench:vs-lavalink` may spawn a JDK; that is only so the scoreboard has a loser.
 
 ## Performance
 
-yambot plays in one Node process. YouTube webm/opus does not spawn ffmpeg. Put ffmpeg on PATH for SoundCloud or HTTP streams. Detail: `PERF.md`.
+Lavalink lost. Same VM, Lavalink 4.2.2, local HTTP mpeg, n = 10. yambot wins load, first frame, skip, RSS, and CPU. At N = 100 sessions Lavalink fail_rate is 0.81; yambot is 0. Method and full tables: `PERF.md`.
+
+| Metric | yambot | Lavalink |
+|--------|-------:|---------:|
+| HTTP load p50 (ms) | 0.005 | 2.557 |
+| First frame p50 (ms) | 0.425 | 2.884 |
+| Skip p50 (ms) | 1.11 | 3.462 |
+| RSS (MB) | 126.37 | 301.63 |
+| CPU (%) | 1.37 | 2.5 |
+| Scale N=100 fail_rate | 0 | 0.81 |
+
+yambot plays in one Node process. YouTube webm/opus does not spawn ffmpeg. Put ffmpeg on PATH for SoundCloud or HTTP streams.
 
 ## Need
 
