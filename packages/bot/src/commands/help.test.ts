@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
-import type { CommandContext } from "../command-context.ts";
+import type { CommandContext, CommandReplyOptions } from "../command-context.ts";
 import { clearAllOverlays, setGuildOverlayPrefix } from "../operator-config.ts";
+import { recordedReplyText } from "../reply-embed.ts";
 import { executeHelp } from "./help.ts";
 
 const GUILD_ID = "help-guild-1";
@@ -52,8 +53,8 @@ class FakeContext implements CommandContext {
     this.args = args;
   }
 
-  async reply(text: string): Promise<void> {
-    this.replies.push(text);
+  async reply(text: string, options?: CommandReplyOptions): Promise<void> {
+    this.replies.push(recordedReplyText(text, options));
   }
 }
 

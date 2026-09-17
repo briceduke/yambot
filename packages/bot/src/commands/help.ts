@@ -2,6 +2,7 @@ import { SlashCommandBuilder } from "discord.js";
 
 import type { CommandContext } from "../command-context.ts";
 import { getGuildOperatorView } from "../operator-config.ts";
+import { EMBED_COLOR, replyEmbed } from "../reply-embed.ts";
 
 /** Slash command payload for `/help`. */
 export const helpSlashData = new SlashCommandBuilder()
@@ -15,7 +16,14 @@ export const helpSlashData = new SlashCommandBuilder()
  */
 export async function executeHelp(ctx: CommandContext): Promise<void> {
   const prefix: string = getGuildOperatorView(ctx.guildId, process.env).prefix;
-  await ctx.reply(formatHelpBody(prefix));
+  await ctx.reply(
+    "",
+    replyEmbed({
+      title: "Help",
+      color: EMBED_COLOR.info,
+      description: formatHelpBody(prefix),
+    }),
+  );
 }
 
 function formatHelpBody(prefix: string): string {
